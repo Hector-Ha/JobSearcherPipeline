@@ -1,0 +1,91 @@
+{
+  "tiers": {
+    "L1": {
+      "label": "Greater Toronto Area (Core)",
+      "points": 40,
+      "cities": ["Mississauga", "Toronto"],
+      "aliases": [
+        "GTA",
+        "Greater Toronto",
+        "Greater Toronto Area",
+        "Etobicoke",
+        "North York"
+      ]
+    },
+    "L2": {
+      "label": "Greater Toronto Area (Extended)",
+      "points": 32,
+      "cities": [
+        "Brampton",
+        "Vaughan",
+        "Markham",
+        "Oakville",
+        "Richmond Hill",
+        "Scarborough"
+      ],
+      "aliases": [
+        "York Region",
+        "Peel Region",
+        "Halton Region",
+        "Durham Region",
+        "Ajax",
+        "Pickering",
+        "Whitby",
+        "Oshawa",
+        "Milton",
+        "Burlington",
+        "Newmarket",
+        "Aurora"
+      ]
+    },
+    "L3": {
+      "label": "Ontario Major Cities",
+      "points": 24,
+      "cities": [
+        "Ottawa",
+        "Waterloo",
+        "Kitchener",
+        "Hamilton",
+        "London",
+        "Guelph"
+      ],
+      "aliases": [
+        "KW",
+        "Kitchener-Waterloo",
+        "Cambridge",
+        "Niagara",
+        "St. Catharines",
+        "Barrie",
+        "Kingston"
+      ]
+    },
+    "L4": {
+      "label": "West Coast (BC)",
+      "points": 16,
+      "cities": ["Vancouver", "Burnaby", "Surrey", "Victoria", "Richmond"],
+      "aliases": [
+        "Metro Vancouver",
+        "Lower Mainland",
+        "New Westminster",
+        "Coquitlam",
+        "Langley",
+        "North Vancouver",
+        "West Vancouver"
+      ]
+    },
+    "L5": {
+      "label": "Remote",
+      "points": 8,
+      "cities": ["Remote Canada", "Remote NA", "Remote"],
+      "aliases": [
+        "Canada Remote",
+        "North America Remote",
+        "Fully Remote",
+        "Work From Home",
+        "WFH",
+        "Anywhere in Canada",
+        "Canada-wide"
+      ]
+    }
+  }
+}

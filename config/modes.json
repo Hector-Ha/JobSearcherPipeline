@@ -1,0 +1,50 @@
+{
+  "description": "Work mode keywords to classify jobs as onsite, hybrid, remote, or unknown.",
+  "modes": {
+    "onsite": {
+      "points": 20,
+      "keywords": [
+        "onsite",
+        "on-site",
+        "on site",
+        "in-office",
+        "in office",
+        "office-based",
+        "office based",
+        "in-person",
+        "in person"
+      ]
+    },
+    "hybrid": {
+      "points": 16,
+      "keywords": [
+        "hybrid",
+        "flexible",
+        "flex",
+        "partial remote",
+        "partly remote",
+        "2 days in office",
+        "3 days in office",
+        "days in office"
+      ]
+    },
+    "remote": {
+      "points": 10,
+      "keywords": [
+        "remote",
+        "work from home",
+        "wfh",
+        "fully remote",
+        "100% remote",
+        "distributed",
+        "anywhere",
+        "telecommute",
+        "virtual"
+      ]
+    },
+    "unknown": {
+      "points": 8,
+      "keywords": []
+    }
+  }
+}

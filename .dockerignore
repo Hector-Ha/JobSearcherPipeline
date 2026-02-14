@@ -1,0 +1,11 @@
+node_modules/
+.env
+data/
+logs/
+plans/
+Strategy/
+dist/
+*.md
+.git/
+.gitignore
+.dockerignore

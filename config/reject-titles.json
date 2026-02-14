@@ -1,0 +1,22 @@
+{
+  "description": "Title keywords that auto-reject a job. Applied case-insensitively before scoring.",
+  "patterns": [
+    "senior",
+    "sr.",
+    "sr ",
+    "staff",
+    "lead",
+    "principal",
+    "manager",
+    "director",
+    "architect",
+    "vp",
+    "vice president",
+    "chief",
+    "head of",
+    "team lead",
+    "tech lead",
+    "engineering manager",
+    "distinguished"
+  ]
+}

@@ -1,0 +1,43 @@
+version: "3.8"
+
+services:
+  job-search:
+    build: .
+    container_name: job-search-engine
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 256m
+    volumes:
+      - ./data:/app/data # SQLite database persistence
+      - ./config:/app/config # Configuration files
+      - ./logs:/app/logs # Application logs
+    environment:
+      - TZ=America/Toronto
+
+      # Job alerts bot
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+
+      # System logs bot
+      - TELEGRAM_LOG_BOT_TOKEN=${TELEGRAM_LOG_BOT_TOKEN}
+      - TELEGRAM_LOG_CHAT_ID=${TELEGRAM_LOG_CHAT_ID}
+
+      # Google CSE API keys
+      - GOOGLE_CSE_API_KEY_1=${GOOGLE_CSE_API_KEY_1}
+      - GOOGLE_CSE_API_KEY_2=${GOOGLE_CSE_API_KEY_2}
+      - GOOGLE_CSE_API_KEY_3=${GOOGLE_CSE_API_KEY_3}
+      - GOOGLE_CSE_API_KEY_4=${GOOGLE_CSE_API_KEY_4}
+
+      # CSE Engine IDs
+      - GOOGLE_CSE_ENGINE_A=${GOOGLE_CSE_ENGINE_A}
+      - GOOGLE_CSE_ENGINE_B=${GOOGLE_CSE_ENGINE_B}
+      - GOOGLE_CSE_ENGINE_C=${GOOGLE_CSE_ENGINE_C}
+      - GOOGLE_CSE_ENGINE_D=${GOOGLE_CSE_ENGINE_D}
+      - GOOGLE_CSE_ENGINE_E=${GOOGLE_CSE_ENGINE_E}
+      - NODE_ENV=production
+      - DRY_RUN=false
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

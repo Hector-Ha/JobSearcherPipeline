@@ -1,0 +1,21 @@
+{
+  "description": "Ambiguous IT titles that go to the manual review bucket.",
+  "patterns": [
+    "solutions engineer",
+    "automation engineer",
+    "implementation engineer",
+    "integration engineer",
+    "technical consultant",
+    "technical specialist",
+    "it developer",
+    "it analyst",
+    "systems analyst",
+    "business systems analyst",
+    "technical analyst",
+    "application analyst",
+    "release engineer",
+    "build engineer",
+    "support engineer",
+    "technical support"
+  ]
+}

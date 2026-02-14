@@ -1,0 +1,125 @@
+{
+  "description": "Source definitions with type, schedule, and rate limits. Matches FinalStrategy.md execution schedule.",
+  "sources": {
+    "greenhouse": {
+      "type": "direct-api",
+      "phase": 1,
+      "enabled": true,
+      "schedule": "0 */3 * * *",
+      "scheduleDescription": "Every 3 hours",
+      "endpointTemplate": "https://boards-api.greenhouse.io/v1/boards/{company}/jobs",
+      "rateLimiting": {
+        "delayBetweenRequestsMs": 200,
+        "batchSize": 20,
+        "batchPauseMs": 2000,
+        "maxRetries": 3,
+        "backoffStartMs": 5000
+      },
+      "timeoutMs": 30000
+    },
+    "lever": {
+      "type": "direct-api",
+      "phase": 1,
+      "enabled": true,
+      "schedule": "0 */3 * * *",
+      "scheduleDescription": "Every 3 hours",
+      "endpointTemplate": "https://api.lever.co/v0/postings/{company}",
+      "rateLimiting": {
+        "delayBetweenRequestsMs": 200,
+        "batchSize": 20,
+        "batchPauseMs": 2000,
+        "maxRetries": 3,
+        "backoffStartMs": 5000
+      },
+      "timeoutMs": 30000
+    },
+    "ashby": {
+      "type": "direct-api",
+      "phase": 1,
+      "enabled": true,
+      "schedule": "0 */3 * * *",
+      "scheduleDescription": "Every 3 hours",
+      "endpointTemplate": "https://api.ashbyhq.com/posting-api/job-board/{company}",
+      "rateLimiting": {
+        "delayBetweenRequestsMs": 200,
+        "batchSize": 20,
+        "batchPauseMs": 2000,
+        "maxRetries": 3,
+        "backoffStartMs": 5000
+      },
+      "timeoutMs": 30000
+    },
+    "workable": {
+      "type": "page-parser",
+      "phase": 2,
+      "enabled": false,
+      "schedule": "0 9 * * *",
+      "scheduleDescription": "Daily at 9:00 AM",
+      "urlTemplate": "https://apply.workable.com/{company}",
+      "timeoutMs": 30000
+    },
+    "smartrecruiters": {
+      "type": "page-parser",
+      "phase": 2,
+      "enabled": false,
+      "schedule": "0 9 * * *",
+      "scheduleDescription": "Daily at 9:00 AM",
+      "urlTemplate": "https://careers.smartrecruiters.com/{company}",
+      "timeoutMs": 30000
+    },
+    "bamboohr": {
+      "type": "page-parser",
+      "phase": 2,
+      "enabled": false,
+      "schedule": "0 9 * * *",
+      "scheduleDescription": "Daily at 9:00 AM",
+      "urlTemplate": "https://{company}.bamboohr.com/careers",
+      "timeoutMs": 30000
+    },
+    "google-cse-a": {
+      "type": "google-cse",
+      "phase": 2,
+      "enabled": false,
+      "schedule": "0 8 * * *",
+      "scheduleDescription": "Daily at 8:00 AM (board discovery only)",
+      "purpose": "ATS board discovery — find new Greenhouse/Lever/Ashby company boards",
+      "timeoutMs": 30000
+    },
+    "google-cse-b": {
+      "type": "google-cse",
+      "phase": 2,
+      "enabled": false,
+      "schedule": "0 11 * * *",
+      "scheduleDescription": "Daily at 11:00 AM",
+      "purpose": "Canadian long-tail discovery (Humi, Collage, etc.)",
+      "timeoutMs": 30000
+    },
+    "google-cse-c": {
+      "type": "google-cse",
+      "phase": 2,
+      "enabled": false,
+      "schedule": "0 10 * * 2,4",
+      "scheduleDescription": "Tue/Thu at 10:00 AM + Wed at 10:00 AM (university/hospital)",
+      "purpose": "Public sector (GC Jobs, GoJobs, BC Gov, CivicJobs) + University/Hospital",
+      "timeoutMs": 30000
+    },
+    "google-cse-d": {
+      "type": "google-cse",
+      "phase": 3,
+      "enabled": false,
+      "schedule": "0 14 * * *",
+      "scheduleDescription": "Daily at 2:00 PM",
+      "purpose": "Aggregator discovery (LinkedIn, Indeed, Eluta)",
+      "timeoutMs": 30000
+    },
+    "google-cse-e": {
+      "type": "google-cse",
+      "phase": 3,
+      "enabled": false,
+      "schedule": "0 10 * * 5",
+      "scheduleDescription": "Fridays at 10:00 AM",
+      "purpose": "Underground + Agency discovery (GitHub, HN, X, BetaKit)",
+      "timeoutMs": 30000
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "description": "Scoring weights and band definitions. 3 reliable factors only.",
+  "weights": {
+    "freshness": 40,
+    "location": 40,
+    "mode": 20
+  },
+  "freshness": {
+    "description": "Points based on time since posting",
+    "brackets": [
+      { "maxHours": 6, "points": 40, "label": "≤6h" },
+      { "maxHours": 24, "points": 32, "label": "≤24h" },
+      { "maxHours": 48, "points": 20, "label": "≤48h" },
+      { "maxHours": 72, "points": 14, "label": "≤3d" },
+      { "maxHours": 168, "points": 8, "label": "≤7d" },
+      { "maxHours": null, "points": 2, "label": "older" }
+    ],
+    "lowConfidenceCap": 24,
+    "lowConfidenceNote": "If posted_at_confidence is 'low', cap freshness score at 24 until confirmed"
+  },
+  "bands": {
+    "topPriority": {
+      "emoji": "🔴",
+      "label": "Top Priority",
+      "minScore": 80,
+      "maxScore": 100,
+      "action": "Instant Telegram ping + appears in digest"
+    },
+    "goodMatch": {
+      "emoji": "🟡",
+      "label": "Good Match",
+      "minScore": 50,
+      "maxScore": 79,
+      "action": "Morning + evening digest"
+    },
+    "worthALook": {
+      "emoji": "🟢",
+      "label": "Worth a Look",
+      "minScore": 0,
+      "maxScore": 49,
+      "action": "In digest under 'also found' section"
+    }
+  }
+}
