@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const CREATE_TABLES_SQL = `
   -- 1. run_log (created first — referenced by jobs_raw and connector_retry_queue)
@@ -195,4 +195,32 @@ export const CREATE_TABLES_SQL = `
     hit_limit INTEGER DEFAULT 0,
     UNIQUE(key_index, date)
   );
+
+  -- 13. job_fit_analysis
+  CREATE TABLE IF NOT EXISTS job_fit_analysis (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    canonical_job_id INTEGER NOT NULL UNIQUE,
+    fit_score INTEGER,
+    verdict TEXT,
+    summary TEXT,
+    strengths_json TEXT,
+    gaps_json TEXT,
+    recommendation TEXT,
+    skills_matched_json TEXT,
+    skills_missing_json TEXT,
+    skills_bonus_json TEXT,
+    experience_level_match TEXT,
+    domain_relevance TEXT,
+    resume_tailoring_tips_json TEXT,
+    cover_letter_points_json TEXT,
+    model_used TEXT,
+    provider TEXT,
+    prompt_tokens INTEGER,
+    completion_tokens INTEGER,
+    analyzed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (canonical_job_id) REFERENCES jobs_canonical(id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_fit_analysis_job ON job_fit_analysis(canonical_job_id);
+  CREATE INDEX IF NOT EXISTS idx_fit_analysis_score ON job_fit_analysis(fit_score DESC);
 `;

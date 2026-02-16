@@ -15,8 +15,10 @@
     "cleanup-expired": "bun run src/scripts/cleanup-expired.ts",
     "retry-alerts": "bun run src/scripts/retry-alerts.ts",
     "archive-old-jobs": "bun run src/scripts/archive-old-jobs.ts",
+    "resume": "bun run src/scripts/resume-analysis.ts",
     "test-dry-run": "DRY_RUN=true bun run src/index.ts",
-    "replay": "bun run src/scripts/replay.ts"
+    "replay": "bun run src/scripts/replay.ts",
+    "setup-webhook": "bun run src/scripts/setup-webhook.ts"
   },
   "dependencies": {
     "cheerio": "^1.2.0",

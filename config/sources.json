@@ -4,7 +4,7 @@
     "greenhouse": {
       "type": "direct-api",
       "phase": 1,
-      "enabled": true,
+      "enabled": false,
       "schedule": "0 */3 * * *",
       "scheduleDescription": "Every 3 hours",
       "endpointTemplate": "https://boards-api.greenhouse.io/v1/boards/{company}/jobs",

@@ -4,8 +4,18 @@ import {
   initializeDatabase,
   checkDatabaseIntegrity,
   getDatabaseStats,
+  quickHealthCheck,
 } from "./db";
 import { loadConfig, type AppConfig } from "./config";
+import { startScheduler } from "./scheduler";
+import { handleCallbackQuery } from "./alerts/callback";
+import {
+  getJobsByScore,
+  getJobById,
+  markJobApplied,
+  markJobDismissed,
+} from "./db/operations";
+import type { TitleBucket, JobStatus } from "./types";
 
 logger.info("═══════════════════════════════════════════════════");
 logger.info("  Job Search Automation Engine");
@@ -38,16 +48,16 @@ if (!integrity.ok) {
 const app = new Hono();
 
 app.get("/health", (c) => {
-  const dbIntegrity = checkDatabaseIntegrity();
+  const dbOk = quickHealthCheck();
   const stats = getDatabaseStats();
 
   return c.json({
-    status: dbIntegrity.ok ? "healthy" : "degraded",
+    status: dbOk ? "healthy" : "degraded",
     timestamp: new Date().toISOString(),
     version: "1.0.0",
     dryRun: config.env.dryRun,
     database: {
-      integrity: dbIntegrity.result,
+      ok: dbOk,
       stats,
     },
   });
@@ -74,37 +84,92 @@ app.get("/status", (c) => {
   });
 });
 
-// REST API endpoints (FinalStrategy.md lines 747-753)
+// REST API endpoints
 app.get("/api/jobs", (c) => {
-  // TODO: Browse jobs with filters
-  return c.json({ message: "Not implemented yet — Phase 1 Day 3", jobs: [] });
+  const limit = parseInt(c.req.query("limit") ?? "50", 10);
+  const offset = parseInt(c.req.query("offset") ?? "0", 10);
+  const band = c.req.query("band") as string | undefined;
+  const bucket = c.req.query("bucket") as TitleBucket | undefined;
+  const status = (c.req.query("status") as JobStatus) ?? "active";
+  const since = c.req.query("since") as string | undefined;
+
+  const jobs = getJobsByScore({
+    titleBucket: bucket,
+    status,
+    limit: Math.min(limit, 200),
+    offset,
+    sinceDate: since,
+  });
+
+  return c.json({
+    count: jobs.length,
+    offset,
+    limit,
+    jobs,
+  });
 });
 
 app.get("/api/jobs/:id", (c) => {
-  // TODO: Job detail
-  return c.json({ message: "Not implemented yet — Phase 1 Day 3" });
+  const id = parseInt(c.req.param("id"), 10);
+  const job = getJobById(id);
+
+  if (!job) {
+    return c.json({ error: "Job not found" }, 404);
+  }
+
+  return c.json(job);
 });
 
 app.post("/api/jobs/:id/applied", (c) => {
-  // TODO: Mark as applied
-  return c.json({ message: "Not implemented yet — Phase 1 Day 3" });
+  const id = parseInt(c.req.param("id"), 10);
+  const job = getJobById(id);
+
+  if (!job) {
+    return c.json({ error: "Job not found" }, 404);
+  }
+
+  markJobApplied(id);
+  return c.json({ success: true, action: "applied", jobId: id });
 });
 
 app.post("/api/jobs/:id/dismissed", (c) => {
-  // TODO: Mark as dismissed
-  return c.json({ message: "Not implemented yet — Phase 1 Day 3" });
+  const id = parseInt(c.req.param("id"), 10);
+  const job = getJobById(id);
+
+  if (!job) {
+    return c.json({ error: "Job not found" }, 404);
+  }
+
+  markJobDismissed(id);
+  return c.json({ success: true, action: "dismissed", jobId: id });
 });
 
+app.post("/api/telegram/callback", async (c) => {
+  try {
+    const update = await c.req.json();
+    const result = await handleCallbackQuery(
+      update,
+      config.env.telegramBotToken,
+    );
+    return c.json(result);
+  } catch (error) {
+    logger.error(`Telegram callback error: ${error}`);
+    return c.json({ success: false, error: "Internal error" }, 500);
+  }
+});
+
+// Analytics endpoints (placeholders for Phase 3)
 app.get("/api/analytics/sources", (c) => {
   // TODO: Source analytics
-  return c.json({ message: "Not implemented yet — Phase 3" });
+  return c.json({ message: "Not implemented yet" });
 });
 
 app.get("/api/analytics/weekly", (c) => {
   // TODO: Weekly summary
-  return c.json({ message: "Not implemented yet — Phase 3" });
+  return c.json({ message: "Not implemented yet" });
 });
 
+// Start server
 const port = config.env.port;
 
 logger.info(`Starting server on port ${port}...`);
@@ -112,6 +177,9 @@ logger.info(`Starting server on port ${port}...`);
 if (config.env.dryRun) {
   logger.info("🧪 DRY RUN MODE — no Telegram alerts will be sent");
 }
+
+// Start the cron scheduler
+startScheduler(config);
 
 export default {
   port,
@@ -121,4 +189,5 @@ export default {
 logger.info(`✅ Job Search Engine started on http://localhost:${port}`);
 logger.info(`   Health: http://localhost:${port}/health`);
 logger.info(`   Status: http://localhost:${port}/status`);
+logger.info(`   API:    http://localhost:${port}/api/jobs`);
 logger.info("═══════════════════════════════════════════════════");

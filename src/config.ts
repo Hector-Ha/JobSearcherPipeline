@@ -111,6 +111,16 @@ export interface EnvConfig {
   timezone: string;
   nodeEnv: string;
   port: number;
+
+  // AI Fit Analysis - Modal keys (rotation pool)
+  modalApiToken: string;
+  modalApiToken2: string;
+  modalApiToken3: string;
+  // AI Fit Analysis - Groq fallback
+  groqApiKey: string;
+  groqModel: string;
+  aiAnalysisMinScore: number;
+  aiRequestDelayMs: number;
 }
 
 export interface AppConfig {
@@ -182,6 +192,13 @@ function loadEnvConfig(): EnvConfig {
     timezone: process.env.TZ ?? "America/Toronto",
     nodeEnv: process.env.NODE_ENV ?? "development",
     port: parseInt(process.env.PORT ?? "3000", 10),
+    modalApiToken: process.env.MODAL_API_TOKEN ?? "",
+    modalApiToken2: process.env.MODAL_API_TOKEN_2 ?? "",
+    modalApiToken3: process.env.MODAL_API_TOKEN_3 ?? "",
+    groqApiKey: process.env.GROQ_API_KEY ?? "",
+    groqModel: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
+    aiAnalysisMinScore: parseInt(process.env.AI_ANALYSIS_MIN_SCORE ?? "50", 10),
+    aiRequestDelayMs: parseInt(process.env.AI_REQUEST_DELAY_MS ?? "1000", 10),
   };
 }
 

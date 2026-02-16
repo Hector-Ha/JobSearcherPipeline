@@ -1,7 +1,8 @@
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "fs";
 import { join } from "path";
-import { CREATE_TABLES_SQL, SCHEMA_VERSION } from "./schema";
+import { SCHEMA_VERSION } from "./schema";
+import { runMigrations } from "./migrations";
 import { logger } from "../logger";
 
 const DATA_DIR = join(import.meta.dir, "../../data");
@@ -25,8 +26,8 @@ export function initializeDatabase(): void {
   logger.info("Initializing database...");
 
   try {
-    // Run all CREATE TABLE statements (exec supports multiple statements)
-    db.exec(CREATE_TABLES_SQL);
+    // Apply versioned migrations
+    runMigrations(db);
 
     // Verify tables exist
     const tables = db
@@ -43,9 +44,9 @@ export function initializeDatabase(): void {
       `Database initialized with ${tableNames.length} tables: ${tableNames.join(", ")}`,
     );
 
-    if (tableNames.length < 12) {
+    if (tableNames.length < 14) {
       logger.warn(
-        `Expected 12 tables, found ${tableNames.length}. Some tables may be missing.`,
+        `Expected at least 14 tables, found ${tableNames.length}. Some tables may be missing.`,
       );
     }
   } catch (error) {
@@ -92,6 +93,9 @@ export function getDatabaseStats(): Record<string, number> {
     "schema_fingerprints",
     "cse_key_usage",
     "run_log",
+    "discovered_boards",
+    "board_poll_state",
+    "_migrations",
   ];
 
   for (const table of tables) {
@@ -106,6 +110,15 @@ export function getDatabaseStats(): Record<string, number> {
   }
 
   return stats;
+}
+
+export function quickHealthCheck(): boolean {
+  try {
+    const result = db.query<{ ok: number }, []>("SELECT 1 as ok").get();
+    return result?.ok === 1;
+  } catch {
+    return false;
+  }
 }
 
 export { db, DB_PATH, SCHEMA_VERSION };

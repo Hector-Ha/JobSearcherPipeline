@@ -22,22 +22,22 @@
     "topPriority": {
       "emoji": "🔴",
       "label": "Top Priority",
-      "minScore": 80,
+      "minScore": 70,
       "maxScore": 100,
       "action": "Instant Telegram ping + appears in digest"
     },
     "goodMatch": {
       "emoji": "🟡",
       "label": "Good Match",
-      "minScore": 50,
-      "maxScore": 79,
+      "minScore": 40,
+      "maxScore": 69,
       "action": "Morning + evening digest"
     },
     "worthALook": {
       "emoji": "🟢",
       "label": "Worth a Look",
       "minScore": 0,
-      "maxScore": 49,
+      "maxScore": 39,
       "action": "In digest under 'also found' section"
     }
   }

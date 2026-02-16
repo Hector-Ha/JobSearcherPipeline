@@ -4,29 +4,17 @@
  */
 
 import { logger } from "../logger";
-import { db } from "../db";
+import { initializeDatabase } from "../db";
+import { archiveOldJobs } from "../db/operations";
 
 logger.info("Archive old jobs triggered");
 
+initializeDatabase();
+
 try {
-  // Archive jobs older than 30 days
-  const archiveResult = db.run(`
-    UPDATE jobs_canonical
-    SET status = 'archived', archived_at = datetime('now')
-    WHERE status = 'active'
-    AND first_seen_at < datetime('now', '-30 days')
-  `);
-  logger.info(`Archived ${archiveResult.changes} jobs older than 30 days`);
-
-  // Purge raw data older than 90 days
-  const purgeResult = db.run(`
-    DELETE FROM jobs_raw
-    WHERE fetched_at < datetime('now', '-90 days')
-  `);
-  logger.info(
-    `Purged ${purgeResult.changes} raw data entries older than 90 days`,
-  );
-
+  const { archived, purged } = archiveOldJobs();
+  logger.info(`Archived ${archived} jobs older than 30 days`);
+  logger.info(`Purged ${purged} raw data entries older than 90 days`);
   logger.info("✅ Archive and purge complete");
 } catch (error) {
   logger.error("Failed to archive/purge:", error);

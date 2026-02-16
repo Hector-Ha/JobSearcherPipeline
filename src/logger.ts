@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, appendFileSync } from "fs";
+import { existsSync, mkdirSync, createWriteStream } from "fs";
 import { join } from "path";
 
 const LOGS_DIR = join(import.meta.dir, "../logs");
@@ -49,12 +49,17 @@ function formatLogEntry(
   return `[${timestamp}] [${level.toUpperCase()}] ${message}${extraArgs}`;
 }
 
+const logStream = createWriteStream(LOG_FILE, {
+  flags: "a",
+  encoding: "utf-8",
+});
+
+logStream.on("error", (err) => {
+  console.error(`[LOG STREAM ERROR] ${err.message}`);
+});
+
 function writeToFile(entry: string): void {
-  try {
-    appendFileSync(LOG_FILE, entry + "\n", "utf-8");
-  } catch {
-    // Silently fail file writes
-  }
+  logStream.write(entry + "\n");
 }
 
 function log(level: LogLevel, message: string, ...args: unknown[]): void {

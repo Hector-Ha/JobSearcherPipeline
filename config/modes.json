@@ -16,7 +16,7 @@
       ]
     },
     "hybrid": {
-      "points": 16,
+      "points": 20,
       "keywords": [
         "hybrid",
         "flexible",
@@ -29,7 +29,7 @@
       ]
     },
     "remote": {
-      "points": 10,
+      "points": 20,
       "keywords": [
         "remote",
         "work from home",
@@ -43,7 +43,7 @@
       ]
     },
     "unknown": {
-      "points": 8,
+      "points": 10,
       "keywords": []
     }
   }

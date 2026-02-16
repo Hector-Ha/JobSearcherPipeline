@@ -14,7 +14,7 @@
     },
     "L2": {
       "label": "Greater Toronto Area (Extended)",
-      "points": 32,
+      "points": 40,
       "cities": [
         "Brampton",
         "Vaughan",
@@ -40,7 +40,7 @@
     },
     "L3": {
       "label": "Ontario Major Cities",
-      "points": 24,
+      "points": 40,
       "cities": [
         "Ottawa",
         "Waterloo",
@@ -61,7 +61,7 @@
     },
     "L4": {
       "label": "West Coast (BC)",
-      "points": 16,
+      "points": 24,
       "cities": ["Vancouver", "Burnaby", "Surrey", "Victoria", "Richmond"],
       "aliases": [
         "Metro Vancouver",
@@ -75,7 +75,7 @@
     },
     "L5": {
       "label": "Remote",
-      "points": 8,
+      "points": 40,
       "cities": ["Remote Canada", "Remote NA", "Remote"],
       "aliases": [
         "Canada Remote",

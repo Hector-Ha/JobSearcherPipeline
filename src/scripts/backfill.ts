@@ -1,11 +1,28 @@
-/**
- * Ingest last 24h of jobs on first deploy.
- * Marks jobs as backfill = true in database.
- * See FinalStrategy.md line 708.
- */
-
 import { logger } from "../logger";
+import { initializeDatabase } from "../db";
+import { loadConfig } from "../config";
+import { runPipeline } from "../pipeline";
 
-logger.info("Backfill triggered — ingesting last 24 hours of jobs");
-// TODO: Run connectors with date filter, mark as backfill
-logger.warn("Backfill not implemented yet — waiting for Phase 1 Day 4");
+logger.info("═══════════════════════════════════════════════════");
+logger.info("  Backfill — First Deploy Catch-up");
+logger.info("═══════════════════════════════════════════════════");
+
+const config = loadConfig();
+initializeDatabase();
+
+logger.info("Running backfill — jobs will NOT trigger instant alerts");
+
+const result = await runPipeline(config, {
+  runType: "backfill",
+  isBackfill: true,
+});
+
+logger.info("═══════════════════════════════════════════════════");
+logger.info("  Backfill Complete");
+logger.info("═══════════════════════════════════════════════════");
+logger.info(`  Jobs found:   ${result.jobsFound}`);
+logger.info(`  Jobs new:     ${result.jobsNew}`);
+logger.info(`  Jobs dupe:    ${result.jobsDuplicate}`);
+logger.info(`  Duration:     ${(result.durationMs / 1000).toFixed(1)}s`);
+
+process.exit(0);
