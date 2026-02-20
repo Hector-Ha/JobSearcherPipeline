@@ -187,14 +187,7 @@ export function normalizeTimestamp(postedAt: string | null): {
       second: "2-digit",
     });
 
-    // torontoString is "YYYY-MM-DD HH:MM:SS"
-    // We need to determine the offset (EST/EDT)
-    // The easiest way is to get the ISO string and see the offset, but 'date.toISOString()' is UTC.
-    // We can infer offset by comparing UTC vs Toronto time, or just append the correct offset code.
-    // Actually, for simplicity and robustness, let's just use the simplified ISO format without offset if that's acceptable,
-    // OR, use a smarter way to get offset.
-
-    // Better approach: Get the offset string ("-05:00" or "-04:00")
+    // Get the offset string ("-05:00" or "-04:00")
     const longString = date.toLocaleString("en-US", {
       timeZone: "America/Toronto",
       timeZoneName: "shortOffset",
@@ -207,7 +200,6 @@ export function normalizeTimestamp(postedAt: string | null): {
       // Fix format from GMT-5 to -05:00
       let rawOffset = offsetMatch[1];
       if (!rawOffset.includes(":")) {
-        // -5 -> -05:00
         const sign = rawOffset.substring(0, 1);
         const num = rawOffset.substring(1).padStart(2, "0");
         rawOffset = `${sign}${num}:00`;

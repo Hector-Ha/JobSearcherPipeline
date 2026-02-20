@@ -1,8 +1,3 @@
-/**
- * Manually trigger board name discovery via SerpApi (Google Search).
- * Usage: bun run discover-boards
- */
-
 import { logger } from "../logger";
 import { loadConfig } from "../config";
 import { initializeDatabase } from "../db";
