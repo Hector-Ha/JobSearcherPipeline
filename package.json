@@ -7,7 +7,11 @@
     "start": "bun run src/index.ts",
     "dev": "bun run --watch src/index.ts",
     "ingest": "bun run src/scripts/ingest.ts",
+    "ingest-smoke": "bun run src/scripts/ingest-smoke.ts",
+    "ingest-smoke-ai": "bun run src/scripts/ingest-smoke.ts --with-ai",
     "digest": "bun run src/scripts/digest.ts",
+    "digest-force": "bun run src/scripts/digest.ts --force-all",
+    "digest-force-evening": "bun run src/scripts/digest.ts evening --force-all",
     "backfill": "bun run src/scripts/backfill.ts",
     "discover-boards": "bun run src/scripts/discover-boards.ts",
     "health-check": "bun run src/scripts/health-check.ts",
@@ -18,7 +22,9 @@
     "resume": "bun run src/scripts/resume-analysis.ts",
     "test-dry-run": "DRY_RUN=true bun run src/index.ts",
     "replay": "bun run src/scripts/replay.ts",
-    "setup-webhook": "bun run src/scripts/setup-webhook.ts"
+    "setup-webhook": "bun run src/scripts/setup-webhook.ts",
+    "test-flow": "bun run src/scripts/test-flow.ts",
+    "sync-boards": "bun run src/scripts/sync-boards.ts"
   },
   "dependencies": {
     "cheerio": "^1.2.0",

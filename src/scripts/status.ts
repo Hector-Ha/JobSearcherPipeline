@@ -58,9 +58,9 @@ try {
 
 logger.info(`\n⚙️  Environment: ${config.env.nodeEnv}`);
 logger.info(`🧪 Dry run: ${config.env.dryRun}`);
-logger.info(`🔑 CSE API keys: ${config.env.googleCseApiKeys.length}`);
+logger.info(`🔑 SerpApi keys: ${config.env.serpApiKeys.length}`);
 logger.info(
-  `🏢 Seed companies: ${config.companies.greenhouse.length + config.companies.lever.length + config.companies.ashby.length}`,
+  `🏢 Seed companies: ${config.companies.greenhouse.length + config.companies.lever.length + config.companies.ashby.length + config.companies.workable.length + config.companies.smartrecruiters.length + config.companies.bamboohr.length + config.companies.workday.length + config.companies.icims.length}`,
 );
 
 const enabledSources = Object.entries(config.sources.sources)

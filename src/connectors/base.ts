@@ -27,9 +27,10 @@ export async function fetchWithRetry<T>(
   const startTime = Date.now();
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       const response = await fetch(url, {
         signal: controller.signal,
@@ -39,9 +40,6 @@ export async function fetchWithRetry<T>(
         },
       });
 
-      clearTimeout(timeout);
-
-      // Handle rate limiting (429)
       if (response.status === 429) {
         rateLimited = true;
         const retryAfter = response.headers.get("Retry-After");
@@ -68,7 +66,6 @@ export async function fetchWithRetry<T>(
         };
       }
 
-      // Handle server errors (5xx)
       if (response.status >= 500) {
         lastError = `Server error: ${response.status} ${response.statusText}`;
         logger.warn(
@@ -91,7 +88,6 @@ export async function fetchWithRetry<T>(
         };
       }
 
-      // Handle other HTTP errors
       if (!response.ok) {
         return {
           data: null,
@@ -103,8 +99,10 @@ export async function fetchWithRetry<T>(
         };
       }
 
-      // Parse JSON response
+      // Parse JSON response - THIS IS WHERE IT COULD HANG if timeout was already cleared
       const data = (await response.json()) as T;
+
+      clearTimeout(timeout); // NOW it is safe to clear timeout
 
       return {
         data,
@@ -126,6 +124,8 @@ export async function fetchWithRetry<T>(
         await sleep(waitMs);
         continue;
       }
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -137,8 +137,6 @@ export async function fetchWithRetry<T>(
     responseTimeMs: Date.now() - startTime,
   };
 }
-
-// Batch Fetch
 
 export interface BatchFetchOptions<T> {
   items: string[];
@@ -154,25 +152,27 @@ export async function batchFetch<T>(
   const results: T[] = [];
   let completed = 0;
 
-  // Process in batches
   for (let i = 0; i < items.length; i += rateLimiting.batchSize) {
     const batch = items.slice(i, i + rateLimiting.batchSize);
 
-    // Process each item in the batch with delay between requests
-    for (const item of batch) {
-      const result = await fetchFn(item);
-      results.push(result);
-      completed++;
+    for (let j = 0; j < batch.length; j++) {
+      const item = batch[j];
+      try {
+        const result = await fetchFn(item);
+        results.push(result);
+      } catch (e) {
+        logger.error(`Batch item failed: ${item} - ${e}`);
+      }
 
+      completed += 1;
       onProgress?.(completed, items.length);
 
-      // Delay between individual requests within batch
-      if (completed < items.length) {
+      const isLastInBatch = j === batch.length - 1;
+      if (!isLastInBatch && rateLimiting.delayBetweenRequestsMs > 0) {
         await sleep(rateLimiting.delayBetweenRequestsMs);
       }
     }
 
-    // Pause between batches
     const nextBatchStart = i + rateLimiting.batchSize;
     if (nextBatchStart < items.length) {
       logger.debug(
@@ -184,8 +184,6 @@ export async function batchFetch<T>(
 
   return results;
 }
-
-// Utility
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

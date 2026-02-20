@@ -15,6 +15,11 @@ logger.info("Running backfill — jobs will NOT trigger instant alerts");
 const result = await runPipeline(config, {
   runType: "backfill",
   isBackfill: true,
+  connectorOptions: {
+    includeAts: true,
+    includeAggregators: true,
+    includeUnderground: true,
+  },
 });
 
 logger.info("═══════════════════════════════════════════════════");

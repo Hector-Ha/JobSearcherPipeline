@@ -64,6 +64,14 @@ const MIGRATIONS: Migration[] = [
         ON job_alternate_urls(canonical_job_id, alternate_source);
     `,
   },
+  {
+    id: "0004_content_fingerprint_index",
+    description: "Index content fingerprint for dedup lookups",
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_canonical_content_fingerprint
+        ON jobs_canonical(content_fingerprint);
+    `,
+  },
 ];
 
 function ensureMigrationTable(db: Database): void {

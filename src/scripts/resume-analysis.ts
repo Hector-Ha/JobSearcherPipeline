@@ -29,8 +29,11 @@ async function runWithConcurrency<T, R>(
     }
 
     const promise = processor(item)
-      .then(result => {
+      .then((result) => {
         results.push(result);
+      })
+      .catch((error) => {
+        logger.error(`runWithConcurrency item failed: ${error}`);
       })
       .finally(() => {
         const index = executing.indexOf(promise);

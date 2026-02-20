@@ -75,6 +75,7 @@ export interface SourceDefinition {
   endpointTemplate?: string;
   urlTemplate?: string;
   purpose?: string;
+  queries?: string[];
   rateLimiting?: RateLimiting;
   timeoutMs: number;
 }
@@ -89,38 +90,32 @@ export interface CompaniesConfig {
   greenhouse: string[];
   lever: string[];
   ashby: string[];
+  workable: string[];
+  smartrecruiters: string[];
+  bamboohr: string[];
+  workday: string[];
+  icims: string[];
 }
 
 export interface EnvConfig {
-  //Job Alerts Bot
   telegramBotToken: string;
   telegramChatId: string;
-
-  //System Logs Bot
   telegramLogBotToken: string;
   telegramLogChatId: string;
-
-  // Google CSE API Keys (rotation)
-  googleCseApiKeys: string[];
-
-  // Google CSE Engine IDs
-  googleCseEngines: Record<string, string>;
-
-  // Runtime
+  serpApiKeys: string[];
   dryRun: boolean;
   timezone: string;
   nodeEnv: string;
   port: number;
-
-  // AI Fit Analysis - Modal keys (rotation pool)
   modalApiToken: string;
   modalApiToken2: string;
   modalApiToken3: string;
-  // AI Fit Analysis - Groq fallback
+  modalModel?: string;
   groqApiKey: string;
   groqModel: string;
   aiAnalysisMinScore: number;
   aiRequestDelayMs: number;
+  maxJobAgeDays: number;
 }
 
 export interface AppConfig {
@@ -137,6 +132,20 @@ export interface AppConfig {
 
 const CONFIG_DIR = join(import.meta.dir, "../config");
 
+function parseEnvInt(
+  value: string | undefined,
+  fallback: number,
+  min?: number,
+  max?: number,
+): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  if (Number.isNaN(parsed)) return fallback;
+
+  if (typeof min === "number" && parsed < min) return min;
+  if (typeof max === "number" && parsed > max) return max;
+  return parsed;
+}
+
 function loadJsonConfig<T>(filename: string): T {
   const filepath = join(CONFIG_DIR, filename);
 
@@ -146,39 +155,27 @@ function loadJsonConfig<T>(filename: string): T {
 
   try {
     const raw = readFileSync(filepath, "utf-8");
-    return JSON.parse(raw) as T;
+    // Strip comments while preserving string contents (avoid corrupting URLs).
+    const json = raw.replace(
+      /\\"|"(?:\\"|[^"])*"|(\/\/.*|\/\*[\s\S]*?\*\/)/g,
+      (match, comment) => (comment ? "" : match),
+    );
+    return JSON.parse(json) as T;
   } catch (error) {
     throw new Error(`Failed to parse config file ${filename}: ${error}`);
   }
 }
 
 function loadEnvConfig(): EnvConfig {
-  // Collect all CSE API keys
-  const cseKeys: string[] = [];
+  const serpKeys: string[] = [];
   for (const [envKey, value] of Object.entries(process.env)) {
-    if (!envKey.startsWith("GOOGLE_CSE_API_KEY_")) {
+    if (!envKey.startsWith("SERPAPI_KEY_")) {
       continue;
     }
-    if (!value || value.startsWith("AIzaSy...")) {
+    if (!value) {
       continue;
     }
-    cseKeys.push(value);
-  }
-
-  // Collect CSE Engine IDs
-  const cseEngines: Record<string, string> = {};
-  const engineMap: Record<string, string> = {
-    A: "GOOGLE_CSE_ENGINE_A",
-    B: "GOOGLE_CSE_ENGINE_B",
-    C: "GOOGLE_CSE_ENGINE_C",
-    D: "GOOGLE_CSE_ENGINE_D",
-    E: "GOOGLE_CSE_ENGINE_E",
-  };
-  for (const [label, envKey] of Object.entries(engineMap)) {
-    const value = process.env[envKey];
-    if (value) {
-      cseEngines[label] = value;
-    }
+    serpKeys.push(value);
   }
 
   return {
@@ -186,19 +183,25 @@ function loadEnvConfig(): EnvConfig {
     telegramChatId: process.env.TELEGRAM_CHAT_ID ?? "",
     telegramLogBotToken: process.env.TELEGRAM_LOG_BOT_TOKEN ?? "",
     telegramLogChatId: process.env.TELEGRAM_LOG_CHAT_ID ?? "",
-    googleCseApiKeys: cseKeys,
-    googleCseEngines: cseEngines,
+    serpApiKeys: serpKeys.length > 0 ? serpKeys : [],
     dryRun: process.env.DRY_RUN === "true",
     timezone: process.env.TZ ?? "America/Toronto",
     nodeEnv: process.env.NODE_ENV ?? "development",
-    port: parseInt(process.env.PORT ?? "3000", 10),
+    port: parseEnvInt(process.env.PORT, 3000, 1, 65535),
     modalApiToken: process.env.MODAL_API_TOKEN ?? "",
     modalApiToken2: process.env.MODAL_API_TOKEN_2 ?? "",
     modalApiToken3: process.env.MODAL_API_TOKEN_3 ?? "",
+    modalModel: process.env.MODAL_MODEL,
     groqApiKey: process.env.GROQ_API_KEY ?? "",
     groqModel: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
-    aiAnalysisMinScore: parseInt(process.env.AI_ANALYSIS_MIN_SCORE ?? "50", 10),
-    aiRequestDelayMs: parseInt(process.env.AI_REQUEST_DELAY_MS ?? "1000", 10),
+    aiAnalysisMinScore: parseEnvInt(
+      process.env.AI_ANALYSIS_MIN_SCORE,
+      50,
+      0,
+      100,
+    ),
+    aiRequestDelayMs: parseEnvInt(process.env.AI_REQUEST_DELAY_MS, 1000, 0),
+    maxJobAgeDays: parseEnvInt(process.env.MAX_JOB_AGE_DAYS, 14, 1, 60),
   };
 }
 
@@ -215,7 +218,6 @@ export function loadConfig(): AppConfig {
   const sources = loadJsonConfig<SourceConfig>("sources.json");
   const companies = loadJsonConfig<CompaniesConfig>("companies.json");
 
-  // Validation warnings
   if (!env.telegramBotToken) {
     logger.warn("TELEGRAM_BOT_TOKEN not set — alerts will not be sent");
   }
@@ -224,25 +226,28 @@ export function loadConfig(): AppConfig {
       "TELEGRAM_LOG_BOT_TOKEN not set — system logs will not be sent to Telegram",
     );
   }
-  if (env.googleCseApiKeys.length === 0) {
+  if (env.serpApiKeys.length === 0) {
     logger.warn(
-      "No Google CSE API keys configured — CSE discovery will be disabled",
+      "No SerpApi keys configured — Board Discovery will be disabled",
     );
   }
   if (env.dryRun) {
     logger.info("🧪 DRY RUN MODE — no alerts will be sent");
   }
 
-  // Count enabled sources
   const enabledSources = Object.entries(sources.sources)
     .filter(([, s]) => s.enabled)
     .map(([name]) => name);
 
-  // Count seed companies
   const totalCompanies =
     companies.greenhouse.length +
     companies.lever.length +
-    companies.ashby.length;
+    companies.ashby.length +
+    companies.workable.length +
+    companies.smartrecruiters.length +
+    companies.bamboohr.length +
+    companies.workday.length +
+    companies.icims.length;
 
   logger.info(`Config loaded successfully:`);
   logger.info(`  - ${Object.keys(locations.tiers).length} location tiers`);
@@ -253,7 +258,7 @@ export function loadConfig(): AppConfig {
     `  - ${enabledSources.length} enabled sources: ${enabledSources.join(", ") || "none"}`,
   );
   logger.info(`  - ${totalCompanies} seed companies`);
-  logger.info(`  - ${env.googleCseApiKeys.length} CSE API keys`);
+  logger.info(`  - ${env.serpApiKeys.length} SerpApi keys`);
   logger.info(`  - Environment: ${env.nodeEnv}`);
   logger.info(`  - Timezone: ${env.timezone}`);
 
@@ -270,7 +275,6 @@ export function loadConfig(): AppConfig {
   };
 }
 
-// Export singleton config
 let _config: AppConfig | null = null;
 
 export function getConfig(): AppConfig {

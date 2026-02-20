@@ -16,9 +16,14 @@ import {
   insertDuplicateLink,
 } from "../db/operations";
 
-// ─── Fuzzy Cache ────────────────────────────────────────────────────────────
+// Fuzzy Cache
 
-type FuzzyJob = { id: number; company: string; title: string; city: string | null };
+type FuzzyJob = {
+  id: number;
+  company: string;
+  title: string;
+  city: string | null;
+};
 
 interface FuzzySearchable extends FuzzyJob {
   fuzzyKey: string;
@@ -28,14 +33,19 @@ let _fuzzyCache: FuzzySearchable[] | null = null;
 let _fuseInstance: Fuse<FuzzySearchable> | null = null;
 
 export function loadFuzzyCache(): void {
-  const recentJobs = getRecentJobsForFuzzyDedup(30);
+  const recentJobs = getRecentJobsForFuzzyDedup(7);
   _fuzzyCache = recentJobs.map((j) => ({
     ...j,
     fuzzyKey: buildFuzzyKey(j.company, j.title, j.city),
   }));
-  _fuseInstance = _fuzzyCache.length > 0
-    ? new Fuse(_fuzzyCache, { keys: ["fuzzyKey"], threshold: 0.3, includeScore: true })
-    : null;
+  _fuseInstance =
+    _fuzzyCache.length > 0
+      ? new Fuse(_fuzzyCache, {
+          keys: ["fuzzyKey"],
+          threshold: 0.3,
+          includeScore: true,
+        })
+      : null;
 }
 
 export function clearFuzzyCache(): void {
@@ -43,7 +53,7 @@ export function clearFuzzyCache(): void {
   _fuseInstance = null;
 }
 
-// ─── Three-Pass Dedup ───────────────────────────────────────────────────────
+// Three-Pass Dedup
 
 export function checkDuplicate(job: CanonicalJob): DedupResult {
   // Pass 1: URL hash (exact match)
@@ -91,7 +101,7 @@ export function checkDuplicate(job: CanonicalJob): DedupResult {
   return { isDuplicate: false };
 }
 
-// ─── Fuzzy Dedup ────────────────────────────────────────────────────────────
+// Fuzzy Dedup
 
 function checkFuzzyDuplicate(job: CanonicalJob): DedupResult {
   if (!_fuseInstance || !_fuzzyCache || _fuzzyCache.length === 0) {

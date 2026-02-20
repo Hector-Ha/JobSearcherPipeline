@@ -1,6 +1,14 @@
 import { logger } from "../logger";
 import { markJobApplied, markJobDismissed, getJobById } from "../db/operations";
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 interface TelegramCallbackQuery {
   id: string;
   from: {
@@ -18,6 +26,18 @@ interface TelegramUpdate {
   update_id: number;
   callback_query?: TelegramCallbackQuery;
 }
+
+interface TelegramApiResponse<T> {
+  ok: boolean;
+  result: T;
+  description?: string;
+}
+
+interface TelegramWebhookInfo {
+  url: string;
+}
+
+let pollingStarted = false;
 
 export async function handleCallbackQuery(
   update: TelegramUpdate,
@@ -64,7 +84,7 @@ export async function handleCallbackQuery(
           botToken,
           callbackQuery.message.chat.id,
           callbackQuery.message.message_id,
-          `✅ APPLIED — ${job.title} @ ${job.company}`,
+          `✅ APPLIED — ${escapeHtml(job.title)} @ ${escapeHtml(job.company)}`,
         );
       }
     } else if (action === "skip") {
@@ -80,7 +100,7 @@ export async function handleCallbackQuery(
           botToken,
           callbackQuery.message.chat.id,
           callbackQuery.message.message_id,
-          `❌ SKIPPED — ${job.title} @ ${job.company}`,
+          `❌ SKIPPED — ${escapeHtml(job.title)} @ ${escapeHtml(job.company)}`,
         );
       }
     } else {
@@ -136,4 +156,106 @@ async function editMessage(
   } catch (error) {
     logger.error(`editMessageText failed: ${error}`);
   }
+}
+
+export function startCallbackPolling(
+  botToken: string,
+  options: { force?: boolean; timeoutSeconds?: number } = {},
+): void {
+  if (pollingStarted) {
+    return;
+  }
+  if (!botToken) {
+    logger.warn("Telegram callback polling skipped: bot token missing");
+    return;
+  }
+  pollingStarted = true;
+
+  const timeoutSeconds = options.timeoutSeconds ?? 25;
+
+  void (async () => {
+    try {
+      if (!options.force) {
+        const webhookInfo = await getWebhookInfo(botToken);
+        if (webhookInfo.url) {
+          logger.info(
+            `Telegram callback polling disabled (webhook active: ${webhookInfo.url})`,
+          );
+          return;
+        }
+      }
+
+      logger.info(
+        "Telegram callback polling enabled (no webhook detected).",
+      );
+      await pollCallbackLoop(botToken, timeoutSeconds);
+    } catch (error) {
+      logger.error(`Telegram callback polling failed to start: ${error}`);
+    }
+  })();
+}
+
+async function getWebhookInfo(botToken: string): Promise<TelegramWebhookInfo> {
+  const response = await fetch(
+    `https://api.telegram.org/bot${botToken}/getWebhookInfo`,
+  );
+  const payload = (await response.json()) as TelegramApiResponse<TelegramWebhookInfo>;
+  if (!payload.ok) {
+    throw new Error(payload.description ?? "getWebhookInfo failed");
+  }
+  return payload.result;
+}
+
+async function pollCallbackLoop(
+  botToken: string,
+  timeoutSeconds: number,
+): Promise<void> {
+  let offset: number | undefined;
+
+  while (true) {
+    try {
+      const body: {
+        timeout: number;
+        allowed_updates: string[];
+        offset?: number;
+      } = {
+        timeout: timeoutSeconds,
+        allowed_updates: ["callback_query"],
+      };
+      if (offset !== undefined) {
+        body.offset = offset;
+      }
+
+      const response = await fetch(
+        `https://api.telegram.org/bot${botToken}/getUpdates`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      const payload = (await response.json()) as TelegramApiResponse<TelegramUpdate[]>;
+
+      if (!payload.ok) {
+        const desc = payload.description ?? "getUpdates failed";
+        logger.warn(`Telegram callback polling warning: ${desc}`);
+        await sleep(3000);
+        continue;
+      }
+
+      for (const update of payload.result) {
+        offset = update.update_id + 1;
+        if (update.callback_query) {
+          await handleCallbackQuery(update, botToken);
+        }
+      }
+    } catch (error) {
+      logger.warn(`Telegram callback polling error: ${error}`);
+      await sleep(3000);
+    }
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

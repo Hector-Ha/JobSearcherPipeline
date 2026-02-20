@@ -122,14 +122,34 @@ export function classifyMode(
   const hasHybridKeyword = config.modes.modes.hybrid.keywords.some((kw) =>
     combined.includes(kw.toLowerCase()),
   );
+  const hasSpecificLocation = hasNonRemoteLocation(locationRaw, config);
 
   // Per FinalStrategy.md line 219: if remote + city, treat as hybrid
   if (hasHybridKeyword) return "hybrid";
+  if (hasRemoteKeyword && hasSpecificLocation) return "hybrid";
   if (hasRemoteKeyword && hasOnsiteKeyword) return "hybrid";
   if (hasRemoteKeyword) return "remote";
   if (hasOnsiteKeyword) return "onsite";
 
   return "unknown";
+}
+
+function hasNonRemoteLocation(locationRaw: string, config: AppConfig): boolean {
+  const lower = locationRaw.toLowerCase();
+  if (!lower.trim()) return false;
+
+  for (const [tierKey, tier] of Object.entries(config.locations.tiers)) {
+    if (tierKey === "L5") continue; // remote tier
+
+    for (const city of tier.cities) {
+      if (lower.includes(city.toLowerCase())) return true;
+    }
+    for (const alias of tier.aliases) {
+      if (lower.includes(alias.toLowerCase())) return true;
+    }
+  }
+
+  return false;
 }
 
 // Company name normalization
@@ -155,7 +175,9 @@ export function normalizeTimestamp(postedAt: string | null): {
       return { isoString: null, confidence: "low" };
     }
 
-    const formatter = new Intl.DateTimeFormat("en-CA", {
+    // Use sv-SE (Sweden) locale which outputs YYYY-MM-DD HH:MM:SS which is close to ISO
+    // We request specific timezone to get the correct wall-clock time in Toronto
+    const torontoString = date.toLocaleString("sv-SE", {
       timeZone: "America/Toronto",
       year: "numeric",
       month: "2-digit",
@@ -163,26 +185,40 @@ export function normalizeTimestamp(postedAt: string | null): {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
-      hour12: false,
+    });
+
+    // torontoString is "YYYY-MM-DD HH:MM:SS"
+    // We need to determine the offset (EST/EDT)
+    // The easiest way is to get the ISO string and see the offset, but 'date.toISOString()' is UTC.
+    // We can infer offset by comparing UTC vs Toronto time, or just append the correct offset code.
+    // Actually, for simplicity and robustness, let's just use the simplified ISO format without offset if that's acceptable,
+    // OR, use a smarter way to get offset.
+
+    // Better approach: Get the offset string ("-05:00" or "-04:00")
+    const longString = date.toLocaleString("en-US", {
+      timeZone: "America/Toronto",
       timeZoneName: "shortOffset",
     });
-    const parts = formatter.formatToParts(date);
-    const valueOf = (type: string) =>
-      parts.find((p) => p.type === type)?.value ?? "";
-    const tzName = valueOf("timeZoneName"); // e.g. GMT-5 / GMT-4
-    const offsetMatch = tzName.match(/^GMT([+-]\d{1,2})(?::?(\d{2}))?$/);
-    const hourOffset =
-      offsetMatch?.[1].length === 2
-        ? `${offsetMatch[1][0]}0${offsetMatch[1][1]}`
-        : (offsetMatch?.[1] ?? "-05");
-    const minOffset = offsetMatch?.[2] ?? "00";
-    const offset = `${hourOffset}:${minOffset}`;
+    // "2/16/2026, 2:00:00 AM GMT-5"
 
-    const torontoIso = `${valueOf("year")}-${valueOf("month")}-${valueOf("day")}T${valueOf("hour")}:${valueOf("minute")}:${valueOf("second")}${offset}`;
+    const offsetMatch = longString.match(/GMT([+-]\d{1,2}(?::\d{2})?)$/);
+    let offset = "-05:00"; // Default to EST
+    if (offsetMatch) {
+      // Fix format from GMT-5 to -05:00
+      let rawOffset = offsetMatch[1];
+      if (!rawOffset.includes(":")) {
+        // -5 -> -05:00
+        const sign = rawOffset.substring(0, 1);
+        const num = rawOffset.substring(1).padStart(2, "0");
+        rawOffset = `${sign}${num}:00`;
+      }
+      offset = rawOffset;
+    }
 
-    // Direct API sources have high confidence timestamps
+    const isoDate = torontoString.replace(" ", "T") + offset;
+
     return {
-      isoString: torontoIso,
+      isoString: isoDate,
       confidence: "high",
     };
   } catch {

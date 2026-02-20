@@ -57,7 +57,7 @@ export function initKeyPool(config: AppConfig): void {
   if (_keyPool.initialized) return;
 
   const keys: { id: number; apiKey: string }[] = [];
-  
+
   if (config.env.modalApiToken) {
     keys.push({ id: 1, apiKey: config.env.modalApiToken });
   }
@@ -68,11 +68,13 @@ export function initKeyPool(config: AppConfig): void {
     keys.push({ id: 3, apiKey: config.env.modalApiToken3 });
   }
 
-  _keyPool.modalKeys = keys.map(k => ({ ...k, busy: false }));
+  _keyPool.modalKeys = keys.map((k) => ({ ...k, busy: false }));
   _keyPool.initialized = true;
 
   if (_keyPool.modalKeys.length > 0) {
-    logger.info(`AI: Initialized modal key pool with ${_keyPool.modalKeys.length} key(s)`);
+    logger.info(
+      `AI: Initialized modal key pool with ${_keyPool.modalKeys.length} key(s)`,
+    );
   }
 }
 
@@ -82,7 +84,7 @@ export function getModalKeyCount(): number {
 
 function getGroqProvider(config: AppConfig): AIProviderConfig | null {
   if (!config.env.groqApiKey) return null;
-  
+
   return {
     name: "groq",
     endpoint: "https://api.groq.com/openai/v1/chat/completions",
@@ -91,11 +93,11 @@ function getGroqProvider(config: AppConfig): AIProviderConfig | null {
   };
 }
 
-function getModalProviderConfig(): AIProviderConfig {
+function getModalProviderConfig(model?: string): AIProviderConfig {
   return {
     name: "modal",
     endpoint: "https://api.us-west-2.modal.direct/v1/chat/completions",
-    model: "zai-org/GLM-5-FP8",
+    model: model || "zai-org/GLM-5-FP8",
     apiKey: "", // Will be set per-request from key pool
   };
 }
@@ -105,35 +107,68 @@ interface AcquiredKey {
   release: () => void;
 }
 
+const _waitingResolvers: Array<(value: AcquiredKey | null) => void> = [];
+
+function releaseModalKey(slot: ModalKeySlot): void {
+  slot.busy = false;
+  logger.debug(`AI: [key${slot.id}] released`);
+  if (_waitingResolvers.length === 0) return;
+
+  for (let i = 0; i < _keyPool.modalKeys.length; i++) {
+    const index = (_keyPool.nextKeyIndex + i) % _keyPool.modalKeys.length;
+    const candidate = _keyPool.modalKeys[index];
+    if (!candidate.busy) {
+      candidate.busy = true;
+      _keyPool.nextKeyIndex = (index + 1) % _keyPool.modalKeys.length;
+      const resolver = _waitingResolvers.shift();
+      if (resolver) {
+        logger.info(`AI: [key${candidate.id}] acquired`);
+        resolver({ slot: candidate, release: () => releaseModalKey(candidate) });
+      }
+      break;
+    }
+  }
+}
+
 async function acquireModalKey(): Promise<AcquiredKey | null> {
   if (_keyPool.modalKeys.length === 0) return null;
 
   const keyCount = _keyPool.modalKeys.length;
+  const timeoutMs = 30000; // 30s timeout to prevent infinite loop
 
-  while (true) {
-    // Try to find a free key starting from nextKeyIndex (round-robin)
-    for (let i = 0; i < keyCount; i++) {
-      const index = (_keyPool.nextKeyIndex + i) % keyCount;
-      const slot = _keyPool.modalKeys[index];
+  for (let i = 0; i < keyCount; i++) {
+    const index = (_keyPool.nextKeyIndex + i) % keyCount;
+    const slot = _keyPool.modalKeys[index];
 
-      if (!slot.busy) {
-        slot.busy = true;
-        // Move next pointer to the following key for fair distribution
-        _keyPool.nextKeyIndex = (index + 1) % keyCount;
-        logger.info(`AI: [key${slot.id}] acquired`);
-        return {
-          slot,
-          release: () => {
-            slot.busy = false;
-            logger.debug(`AI: [key${slot.id}] released`);
-          },
-        };
-      }
+    if (!slot.busy) {
+      slot.busy = true;
+      _keyPool.nextKeyIndex = (index + 1) % keyCount;
+      logger.info(`AI: [key${slot.id}] acquired`);
+      return {
+        slot,
+        release: () => releaseModalKey(slot),
+      };
     }
-
-    // All keys busy, wait and retry
-    await new Promise(r => setTimeout(r, 200));
   }
+
+  return await new Promise((resolve) => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const wrappedResolver = (value: AcquiredKey | null) => {
+      clearTimeout(timeoutId);
+      resolve(value);
+    };
+
+    _waitingResolvers.push(wrappedResolver);
+
+    timeoutId = setTimeout(() => {
+      const index = _waitingResolvers.indexOf(wrappedResolver);
+      if (index > -1) {
+        _waitingResolvers.splice(index, 1);
+      }
+      logger.error("AI: Failed to acquire Modal key (timeout)");
+      resolve(null);
+    }, timeoutMs);
+  });
 }
 
 interface ChatCompletionResponse {
@@ -163,12 +198,38 @@ interface StreamChunk {
   };
 }
 
-const STREAM_TIMEOUT_MS = 60_000;
+const STREAM_TIMEOUT_MS = 600_000; // 10 minutes
+const MAX_REQUEST_TIMEOUT_MS = 720_000; // 12 minutes (hard limit)
 const MAX_MODAL_RETRIES = 3; // 4 total attempts (initial + 3 retries)
+
+async function readWithTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  timeoutMs: number,
+): Promise<Awaited<ReturnType<typeof reader.read>>> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(
+            new Error(
+              `AI stream stalled: no chunk received for ${timeoutMs}ms`,
+            ),
+          );
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
 
 function isRetryableError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
-  
+
   const msg = error.message.toLowerCase();
   return (
     error.name === "AbortError" ||
@@ -177,7 +238,8 @@ function isRetryableError(error: unknown): boolean {
     msg.includes("socket connection was closed") ||
     msg.includes("connection refused") ||
     msg.includes("econnrefused") ||
-    msg.includes("enotfound")
+    msg.includes("enotfound") ||
+    msg.includes("network timeout")
   );
 }
 
@@ -194,6 +256,12 @@ async function callProvider(
   completionTokens: number;
 } | null> {
   const keyLabel = keyId !== undefined ? `[key${keyId}] ` : "";
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    MAX_REQUEST_TIMEOUT_MS,
+  );
+
   try {
     logger.info(
       `AI: ${keyLabel}calling ${provider.name} (${provider.model})${retryCount > 0 ? ` retry ${retryCount}` : ""}...`,
@@ -217,21 +285,33 @@ async function callProvider(
         temperature: 0.3,
         stream: true,
       }),
+      signal: controller.signal,
     });
 
     if (!response.ok) {
+      clearTimeout(timeoutId);
       const errorText = await response.text();
-      const isRetryable = response.status === 502 || response.status === 503 || response.status === 429;
-      
+      const isRetryable =
+        response.status === 502 ||
+        response.status === 503 ||
+        response.status === 429;
+
       if (isRetryable && retryCount < maxRetries) {
         const backoffMs = 2000 * (retryCount + 1);
         logger.warn(
           `AI: ${keyLabel}${provider.name} returned ${response.status}, retrying in ${backoffMs}ms...`,
         );
-        await new Promise(r => setTimeout(r, backoffMs));
-        return callProvider(provider, systemPrompt, userPrompt, retryCount + 1, maxRetries, keyId);
+        await new Promise((r) => setTimeout(r, backoffMs));
+        return callProvider(
+          provider,
+          systemPrompt,
+          userPrompt,
+          retryCount + 1,
+          maxRetries,
+          keyId,
+        );
       }
-      
+
       logger.error(
         `AI: ${keyLabel}${provider.name} returned ${response.status}: ${errorText.substring(0, 200)}`,
       );
@@ -239,6 +319,7 @@ async function callProvider(
     }
 
     if (!response.body) {
+      clearTimeout(timeoutId);
       logger.error(`AI: ${keyLabel}${provider.name} returned no body`);
       return null;
     }
@@ -252,52 +333,63 @@ async function callProvider(
     let firstTokenTime: number | null = null;
     let lastTokenTime = Date.now();
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      while (true) {
+        const { done, value } = await readWithTimeout(reader, STREAM_TIMEOUT_MS);
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
+        if (done) break;
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+        // Record most recent chunk for diagnostics.
+        lastTokenTime = Date.now();
 
-        const data = trimmed.slice(6);
-        if (data === "[DONE]") continue;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
 
-        try {
-          const chunk = JSON.parse(data) as StreamChunk;
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data: ")) continue;
 
-          if (chunk.choices?.[0]?.delta?.content) {
-            const now = Date.now();
-            
-            if (firstTokenTime === null) {
-              firstTokenTime = now;
-              logger.debug(
-                `AI: ${keyLabel}${provider.name} first token after ${firstTokenTime - startTime}ms`,
-              );
+          const data = trimmed.slice(6);
+          if (data === "[DONE]") continue;
+
+          try {
+            const chunk = JSON.parse(data) as StreamChunk;
+
+            if (chunk.choices?.[0]?.delta?.content) {
+              if (firstTokenTime === null) {
+                firstTokenTime = Date.now();
+                logger.debug(
+                  `AI: ${keyLabel}${provider.name} first token after ${firstTokenTime - startTime}ms`,
+                );
+              }
+              content += chunk.choices[0].delta.content;
             }
 
-            if (now - lastTokenTime > STREAM_TIMEOUT_MS) {
-              logger.warn(`AI: ${keyLabel}${provider.name} stream stall detected (${now - lastTokenTime}ms since last token)`);
+            if (chunk.usage) {
+              promptTokens = chunk.usage.prompt_tokens ?? 0;
+              completionTokens = chunk.usage.completion_tokens ?? 0;
             }
-            
-            lastTokenTime = now;
-            content += chunk.choices[0].delta.content;
+          } catch (err: unknown) {
+            // Skip malformed JSON chunks
           }
-
-          if (chunk.usage) {
-            promptTokens = chunk.usage.prompt_tokens ?? 0;
-            completionTokens = chunk.usage.completion_tokens ?? 0;
-          }
-        } catch {
-          // Skip malformed JSON chunks
         }
+      }
+    } catch (error) {
+      const stalledMs = Date.now() - lastTokenTime;
+      logger.error(`AI: Stream stalled for ${stalledMs}ms - aborting`);
+      controller.abort();
+      throw error;
+    } finally {
+      // Make sure underlying stream is closed even if read() is hung.
+      try {
+        await reader.cancel();
+      } catch {
+        // Ignore close errors while aborting stalled stream.
       }
     }
 
+    clearTimeout(timeoutId);
     const elapsed = Date.now() - startTime;
 
     if (!content) {
@@ -312,10 +404,20 @@ async function callProvider(
 
     return { content, promptTokens, completionTokens };
   } catch (error) {
+    clearTimeout(timeoutId);
     if (isRetryableError(error) && retryCount < maxRetries) {
-      logger.warn(`AI: ${keyLabel}${provider.name} connection error, retrying...`);
-      await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)));
-      return callProvider(provider, systemPrompt, userPrompt, retryCount + 1, maxRetries, keyId);
+      logger.warn(
+        `AI: ${keyLabel}${provider.name} connection error (${error instanceof Error ? error.message : String(error)}), retrying...`,
+      );
+      await new Promise((r) => setTimeout(r, 1000 * (retryCount + 1)));
+      return callProvider(
+        provider,
+        systemPrompt,
+        userPrompt,
+        retryCount + 1,
+        maxRetries,
+        keyId,
+      );
     }
     logger.error(`AI: ${keyLabel}${provider.name} call failed: ${error}`);
     return null;
@@ -325,6 +427,7 @@ async function callProvider(
 async function callModalWithKeyPool(
   systemPrompt: string,
   userPrompt: string,
+  model?: string,
 ): Promise<{
   content: string;
   promptTokens: number;
@@ -336,10 +439,17 @@ async function callModalWithKeyPool(
   const { slot, release } = acquired;
 
   try {
-    const providerConfig = getModalProviderConfig();
+    const providerConfig = getModalProviderConfig(model);
     providerConfig.apiKey = slot.apiKey;
 
-    return await callProvider(providerConfig, systemPrompt, userPrompt, 0, MAX_MODAL_RETRIES, slot.id);
+    return await callProvider(
+      providerConfig,
+      systemPrompt,
+      userPrompt,
+      0,
+      MAX_MODAL_RETRIES,
+      slot.id,
+    );
   } finally {
     release();
   }
@@ -372,14 +482,19 @@ export async function analyzeFit(
 
   // Try Modal via key pool first
   if (_keyPool.modalKeys.length > 0) {
-    const result = await callModalWithKeyPool(SYSTEM_PROMPT, userPrompt);
-    
+    const modalModel = config.env.modalModel || "zai-org/GLM-5-FP8";
+    const result = await callModalWithKeyPool(
+      SYSTEM_PROMPT,
+      userPrompt,
+      modalModel,
+    );
+
     if (result) {
       const parsed = parseAIResponse(result.content);
       if (parsed) {
         const analysis: FitAnalysis = {
           ...parsed,
-          modelUsed: "zai-org/GLM-5-FP8",
+          modelUsed: modalModel,
           provider: "modal",
           promptTokens: result.promptTokens,
           completionTokens: result.completionTokens,
@@ -398,8 +513,14 @@ export async function analyzeFit(
   const groqProvider = getGroqProvider(config);
   if (groqProvider) {
     logger.info("AI: Falling back to Groq...");
-    const result = await callProvider(groqProvider, SYSTEM_PROMPT, userPrompt, 0, 0);
-    
+    const result = await callProvider(
+      groqProvider,
+      SYSTEM_PROMPT,
+      userPrompt,
+      0,
+      0,
+    );
+
     if (result) {
       const parsed = parseAIResponse(result.content);
       if (parsed) {

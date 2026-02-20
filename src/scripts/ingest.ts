@@ -10,7 +10,18 @@ logger.info("══════════════════════�
 const config = loadConfig();
 initializeDatabase();
 
-const result = await runPipeline(config, { runType: "manual" });
+// Auto-import discovered boards
+const { importBoards } = await import("./sync-boards");
+importBoards();
+
+const result = await runPipeline(config, {
+  runType: "manual",
+  connectorOptions: {
+    includeAts: true,
+    includeAggregators: true,
+    includeUnderground: true,
+  },
+});
 
 logger.info("═══════════════════════════════════════════════════");
 logger.info("  Ingest Complete");

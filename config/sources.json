@@ -4,7 +4,7 @@
     "greenhouse": {
       "type": "direct-api",
       "phase": 1,
-      "enabled": false,
+      "enabled": true,
       "schedule": "0 */3 * * *",
       "scheduleDescription": "Every 3 hours",
       "endpointTemplate": "https://boards-api.greenhouse.io/v1/boards/{company}/jobs",
@@ -59,12 +59,19 @@
       "timeoutMs": 30000
     },
     "smartrecruiters": {
-      "type": "page-parser",
+      "type": "direct-api",
       "phase": 2,
       "enabled": false,
       "schedule": "0 9 * * *",
       "scheduleDescription": "Daily at 9:00 AM",
-      "urlTemplate": "https://careers.smartrecruiters.com/{company}",
+      "endpointTemplate": "https://api.smartrecruiters.com/v1/companies/{company}/postings",
+      "rateLimiting": {
+        "delayBetweenRequestsMs": 300,
+        "batchSize": 10,
+        "batchPauseMs": 3000,
+        "maxRetries": 3,
+        "backoffStartMs": 5000
+      },
       "timeoutMs": 30000
     },
     "bamboohr": {
@@ -73,53 +80,96 @@
       "enabled": false,
       "schedule": "0 9 * * *",
       "scheduleDescription": "Daily at 9:00 AM",
-      "urlTemplate": "https://{company}.bamboohr.com/careers",
+      "urlTemplate": "https://jobs.bamboohr.com/{company}",
       "timeoutMs": 30000
     },
-    "google-cse-a": {
-      "type": "google-cse",
+    "workday": {
+      "type": "direct-api",
       "phase": 2,
       "enabled": false,
-      "schedule": "0 8 * * *",
-      "scheduleDescription": "Daily at 8:00 AM (board discovery only)",
-      "purpose": "ATS board discovery — find new Greenhouse/Lever/Ashby company boards",
+      "schedule": "0 9 * * *",
+      "scheduleDescription": "Daily at 9:00 AM",
+      "urlTemplate": "https://{company}",
+      "rateLimiting": {
+        "delayBetweenRequestsMs": 300,
+        "batchSize": 10,
+        "batchPauseMs": 3000,
+        "maxRetries": 3,
+        "backoffStartMs": 5000
+      },
       "timeoutMs": 30000
     },
-    "google-cse-b": {
-      "type": "google-cse",
+    "icims": {
+      "type": "page-parser",
       "phase": 2,
       "enabled": false,
-      "schedule": "0 11 * * *",
-      "scheduleDescription": "Daily at 11:00 AM",
-      "purpose": "Canadian long-tail discovery (Humi, Collage, etc.)",
+      "schedule": "0 9 * * *",
+      "scheduleDescription": "Daily at 9:00 AM",
+      "urlTemplate": "https://{company}",
       "timeoutMs": 30000
     },
-    "google-cse-c": {
-      "type": "google-cse",
+    "serpapi-discovery": {
+      "type": "serpapi",
       "phase": 2,
-      "enabled": false,
-      "schedule": "0 10 * * 2,4",
-      "scheduleDescription": "Tue/Thu at 10:00 AM + Wed at 10:00 AM (university/hospital)",
-      "purpose": "Public sector (GC Jobs, GoJobs, BC Gov, CivicJobs) + University/Hospital",
-      "timeoutMs": 30000
+      "enabled": true,
+      "schedule": "0 8 */3 * *",
+      "scheduleDescription": "Every 3 days at 8:00 AM (to stay within free tier)",
+      "purpose": "Board discovery via Google Search (SerpApi)",
+      "rateLimiting": {
+        "delayBetweenRequestsMs": 5000,
+        "batchSize": 1,
+        "batchPauseMs": 5000,
+        "maxRetries": 3,
+        "backoffStartMs": 10000
+      },
+      "timeoutMs": 60000
     },
-    "google-cse-d": {
-      "type": "google-cse",
+    "serpapi-aggregators": {
+      "type": "serpapi-query-pack",
       "phase": 3,
-      "enabled": false,
-      "schedule": "0 14 * * *",
-      "scheduleDescription": "Daily at 2:00 PM",
-      "purpose": "Aggregator discovery (LinkedIn, Indeed, Eluta)",
-      "timeoutMs": 30000
+      "enabled": true,
+      "schedule": "0 8,20 * * *",
+      "scheduleDescription": "Twice daily at 8:00 AM and 8:00 PM",
+      "purpose": "Discover job postings through major job aggregators",
+      "queries": [
+        "site:ca.linkedin.com/jobs/view (\"software engineer\" OR \"software developer\" OR \"web developer\" OR \"frontend developer\" OR \"backend developer\" OR \"full stack developer\") (\"Toronto\" OR \"Mississauga\" OR \"Vancouver\") (\"entry level\" OR \"new grad\" OR \"junior\" OR \"intermediate\")",
+        "site:ca.indeed.com/viewjob (\"software engineer\" OR \"software developer\" OR \"web developer\" OR \"full stack developer\") (\"Toronto\" OR \"Mississauga\" OR \"Vancouver\") (\"entry level\" OR \"new grad\" OR \"junior\" OR \"intermediate\")",
+        "site:wellfound.com/jobs (\"full stack engineer\" OR \"software engineer\" OR \"frontend\" OR \"backend\") (\"Canada\" OR \"Toronto\" OR \"Vancouver\" OR \"Remote\") (\"entry level\" OR \"junior\" OR \"intermediate\")",
+        "site:glassdoor.ca/job-listing (\"software engineer\" OR \"software developer\" OR \"backend developer\" OR \"frontend developer\") (\"Toronto\" OR \"Mississauga\" OR \"Vancouver\") (\"entry level\" OR \"new grad\" OR \"junior\" OR \"intermediate\")",
+        "site:eluta.ca (\"software engineer\" OR \"software developer\" OR \"web developer\") (\"Toronto\" OR \"Mississauga\" OR \"Ontario\" OR \"Vancouver\" OR \"BC\") (\"entry level\" OR \"junior\" OR \"intermediate\")",
+        "site:simplify.jobs/p (\"software engineer\" OR \"software developer\" OR \"web developer\" OR \"frontend developer\" OR \"backend developer\" OR \"full stack developer\") (\"Toronto\" OR \"Mississauga\" OR \"Vancouver\" OR \"Canada\") (\"entry level\" OR \"new grad\" OR \"junior\" OR \"intermediate\")"
+      ],
+      "rateLimiting": {
+        "delayBetweenRequestsMs": 1200,
+        "batchSize": 1,
+        "batchPauseMs": 1200,
+        "maxRetries": 3,
+        "backoffStartMs": 5000
+      },
+      "timeoutMs": 60000
     },
-    "google-cse-e": {
-      "type": "google-cse",
+    "serpapi-underground": {
+      "type": "serpapi-query-pack",
       "phase": 3,
-      "enabled": false,
-      "schedule": "0 10 * * 5",
-      "scheduleDescription": "Fridays at 10:00 AM",
-      "purpose": "Underground + Agency discovery (GitHub, HN, X, BetaKit)",
-      "timeoutMs": 30000
+      "enabled": true,
+      "schedule": "0 8,20 * * *",
+      "scheduleDescription": "Twice daily at 8:00 AM and 8:00 PM",
+      "purpose": "Discover hiring signals from non-traditional channels",
+      "queries": [
+        "site:news.ycombinator.com who is hiring canada software",
+        "site:github.com hiring software engineer canada",
+        "site:x.com hiring software engineer toronto",
+        "site:betakit.com hiring startup engineering",
+        "site:communitech.ca jobs software"
+      ],
+      "rateLimiting": {
+        "delayBetweenRequestsMs": 1500,
+        "batchSize": 1,
+        "batchPauseMs": 1500,
+        "maxRetries": 3,
+        "backoffStartMs": 5000
+      },
+      "timeoutMs": 60000
     }
   }
 }

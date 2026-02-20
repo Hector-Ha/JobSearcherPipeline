@@ -21,14 +21,18 @@ interface GreenhouseResponse {
   jobs: GreenhouseJob[];
 }
 
-//Fetch Jobs
-
 export async function fetchGreenhouseJobs(
   company: string,
   sourceConfig: SourceDefinition,
 ): Promise<ConnectorResult> {
+  if (!sourceConfig.endpointTemplate) {
+    throw new Error(
+      `Missing endpointTemplate for Greenhouse config (company: ${company})`,
+    );
+  }
+
   const url =
-    sourceConfig.endpointTemplate!.replace("{company}", company) +
+    sourceConfig.endpointTemplate.replace("{company}", company) +
     "?content=true";
 
   const startTime = Date.now();
@@ -69,8 +73,6 @@ export async function fetchGreenhouseJobs(
     rateLimited: result.rateLimited,
   };
 }
-
-// Parse Single Job
 
 function parseGreenhouseJob(job: GreenhouseJob, company: string): RawJob {
   return {

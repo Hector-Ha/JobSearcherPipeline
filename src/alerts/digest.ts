@@ -1,6 +1,18 @@
 import { logger } from "../logger";
 import { getUndigestedJobs, getFitAnalysis, getAlternateUrls } from "../db/operations";
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function safeHref(url: string): string {
+  return escapeHtml(url.trim());
+}
+
 export interface DigestJob {
   id: number;
   title: string;
@@ -30,7 +42,10 @@ export interface DigestPayload {
   };
 }
 
-export function formatDigest(digestType: "morning" | "evening"): DigestPayload {
+export function formatDigest(
+  digestType: "morning" | "evening",
+  options: { forceAll?: boolean } = {},
+): DigestPayload {
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-CA", {
     timeZone: "America/Toronto",
@@ -52,7 +67,7 @@ export function formatDigest(digestType: "morning" | "evening"): DigestPayload {
     sinceDate = today.toISOString();
   }
 
-  const rawJobs = getUndigestedJobs(sinceDate);
+  const rawJobs = getUndigestedJobs(sinceDate, options.forceAll === true);
 
   const jobs: DigestJob[] = rawJobs.map((j) => {
     const base: DigestJob = {
@@ -116,21 +131,28 @@ export function formatDigest(digestType: "morning" | "evening"): DigestPayload {
 
 export function formatJobCard(job: DigestJob, index: number): string {
   const timeAgo = formatTimeAgo(job.postedAt ?? job.firstSeenAt);
-  const location = job.city ?? "Unknown";
-  const mode = job.workMode !== "unknown" ? ` (${job.workMode})` : "";
+  const location = escapeHtml(job.city ?? "Unknown");
+  const mode =
+    job.workMode !== "unknown" ? ` (${escapeHtml(job.workMode)})` : "";
+  const title = escapeHtml(job.title);
+  const company = escapeHtml(job.company);
+  const applyUrl = safeHref(job.url);
 
   // Get alternate URLs from other sources
   const alternates = getAlternateUrls(job.id);
   const altLinks = alternates.length >= 2
-    ? ` | ${alternates.slice(0, 2).map(a => `<a href="${a.url}">${capitalize(a.source)}</a>`).join(" | ")}`
+    ? ` | ${alternates
+        .slice(0, 2)
+        .map((a) => `<a href="${safeHref(a.url)}">${escapeHtml(capitalize(a.source))}</a>`)
+        .join(" | ")}`
     : alternates.length === 1
-      ? ` | <a href="${alternates[0].url}">${capitalize(alternates[0].source)}</a>`
+      ? ` | <a href="${safeHref(alternates[0].url)}">${escapeHtml(capitalize(alternates[0].source))}</a>`
       : "";
 
   const lines = [
-    `<b>${index}.</b> [${job.score}] <b>${job.title}</b>`,
-    `🏢 ${job.company} — 📍 ${location}${mode}`,
-    `🕐 ${timeAgo} → <a href="${job.url}">Apply</a>${altLinks}`,
+    `<b>${index}.</b> [${job.score}] <b>${title}</b>`,
+    `🏢 ${company} — 📍 ${location}${mode}`,
+    `🕐 ${timeAgo} → <a href="${applyUrl}">Apply</a>${altLinks}`,
   ];
 
   // Add compact AI fit line if available
@@ -140,7 +162,7 @@ export function formatJobCard(job: DigestJob, index: number): string {
         job.fitVerdict
       ] ?? "⚪";
     lines.push(
-      `🧠 AI: ${job.fitScore}/100 ${emoji} — ${job.fitSummary ?? job.fitVerdict}`,
+      `🧠 AI: ${job.fitScore}/100 ${emoji} — ${escapeHtml(job.fitSummary ?? job.fitVerdict)}`,
     );
   }
 

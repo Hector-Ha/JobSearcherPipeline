@@ -65,6 +65,7 @@ export const CREATE_TABLES_SQL = `
   );
 
   CREATE UNIQUE INDEX IF NOT EXISTS idx_canonical_url_hash ON jobs_canonical(url_hash);
+  CREATE INDEX IF NOT EXISTS idx_canonical_content_fingerprint ON jobs_canonical(content_fingerprint);
   CREATE INDEX IF NOT EXISTS idx_canonical_source ON jobs_canonical(source);
   CREATE INDEX IF NOT EXISTS idx_canonical_status ON jobs_canonical(status);
   CREATE INDEX IF NOT EXISTS idx_canonical_score ON jobs_canonical(score DESC);

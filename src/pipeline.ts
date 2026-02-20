@@ -1,5 +1,5 @@
 import { logger } from "./logger";
-import { runAllConnectors } from "./connectors";
+import { runConnectors, type RunConnectorOptions } from "./connectors";
 import { normalizeJob } from "./normalizer";
 import { scoreJob } from "./scoring";
 import { checkDuplicate, loadFuzzyCache, clearFuzzyCache } from "./dedup";
@@ -28,6 +28,13 @@ interface JobForAnalysis {
   score: { total: number; band: string };
 }
 
+function isOlderThanDays(dateString: string, maxAgeDays: number): boolean {
+  const ts = Date.parse(dateString);
+  if (Number.isNaN(ts)) return false;
+  const ageMs = Date.now() - ts;
+  return ageMs > maxAgeDays * 24 * 60 * 60 * 1000;
+}
+
 async function runWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
@@ -43,8 +50,11 @@ async function runWithConcurrency<T, R>(
     }
 
     const promise = processor(item)
-      .then(result => {
+      .then((result) => {
         results.push(result);
+      })
+      .catch((error) => {
+        logger.error(`runWithConcurrency item failed: ${error}`);
       })
       .finally(() => {
         const index = executing.indexOf(promise);
@@ -60,7 +70,11 @@ async function runWithConcurrency<T, R>(
 
 export async function runPipeline(
   config: AppConfig,
-  options: { isBackfill?: boolean; runType?: string } = {},
+  options: {
+    isBackfill?: boolean;
+    runType?: string;
+    connectorOptions?: RunConnectorOptions;
+  } = {},
 ): Promise<PipelineRunResult> {
   const startTime = Date.now();
   const runType = options.runType ?? "scheduled";
@@ -86,15 +100,18 @@ export async function runPipeline(
   let jobsNew = 0;
   let jobsDuplicate = 0;
   let jobsRejected = 0;
+  let jobsStale = 0;
   let jobsMaybe = 0;
   let instantAlertsSent = 0;
   let jobsAnalyzed = 0;
   let sourcesAttempted = 0;
   let sourcesSucceeded = 0;
 
+  const connectorOptions = options.connectorOptions ?? {};
+
   try {
     logger.info("Step 1/5: Running connectors...");
-    const connectorResults = await runAllConnectors(config);
+    const connectorResults = await runConnectors(config, connectorOptions);
 
     const sourceStats: Record<
       string,
@@ -110,6 +127,21 @@ export async function runPipeline(
 
     for (const result of connectorResults) {
       sourcesAttempted++;
+      const normalizedError = (result.error ?? "").toUpperCase();
+      const isSupportedBoardSource =
+        result.source === "greenhouse" ||
+        result.source === "lever" ||
+        result.source === "ashby" ||
+        result.source === "workable" ||
+        result.source === "smartrecruiters" ||
+        result.source === "bamboohr" ||
+        result.source === "workday" ||
+        result.source === "icims";
+      const isMissingBoard =
+        !result.success &&
+        isSupportedBoardSource &&
+        normalizedError.startsWith("HTTP 404");
+      const isEffectiveSuccess = result.success || isMissingBoard;
 
       if (!sourceStats[result.source]) {
         sourceStats[result.source] = {
@@ -122,7 +154,12 @@ export async function runPipeline(
         };
       }
 
-      if (result.success) {
+      if (isEffectiveSuccess) {
+        if (isMissingBoard) {
+          logger.info(
+            `[SKIP] ${result.source}/${result.company}: board not found (HTTP 404)`,
+          );
+        }
         sourcesSucceeded++;
         sourceStats[result.source].jobsFound += result.jobs.length;
         sourceStats[result.source].responseTimes.push(result.responseTimeMs);
@@ -135,11 +172,11 @@ export async function runPipeline(
 
       updateConnectorCheckpoint(
         `${result.source}/${result.company}`,
-        result.success,
+        isEffectiveSuccess,
         result.jobs.length,
       );
 
-      if (!result.success) {
+      if (!isEffectiveSuccess) {
         const checkpoint = getConnectorCheckpoint(
           `${result.source}/${result.company}`,
         );
@@ -184,6 +221,17 @@ export async function runPipeline(
 
         if (canonical.titleBucket === "maybe") {
           jobsMaybe++;
+        }
+
+        // Global recency gate across all sources:
+        // if source provides postedAt and it's older than MAX_JOB_AGE_DAYS, drop it.
+        if (
+          canonical.postedAt &&
+          isOlderThanDays(canonical.postedAt, config.env.maxJobAgeDays)
+        ) {
+          jobsRejected++;
+          jobsStale++;
+          continue;
         }
 
         const dedupResult = checkDuplicate(canonical);
@@ -371,7 +419,8 @@ export async function runPipeline(
     logger.info(`  Jobs found: ${jobsFound}`);
     logger.info(`  Jobs new: ${jobsNew}`);
     logger.info(`  Jobs duplicate: ${jobsDuplicate}`);
-    logger.info(`  Jobs rejected (title filter): ${jobsRejected}`);
+    logger.info(`  Jobs rejected (title/stale filter): ${jobsRejected}`);
+    logger.info(`  Jobs stale (>${config.env.maxJobAgeDays}d): ${jobsStale}`);
     logger.info(`  Jobs maybe (manual review): ${jobsMaybe}`);
     logger.info(`  Jobs AI analyzed: ${jobsAnalyzed}`);
     logger.info(`  Instant alerts sent: ${instantAlertsSent}`);

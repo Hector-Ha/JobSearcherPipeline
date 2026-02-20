@@ -22,9 +22,15 @@ initAlerts({
 // Determine digest type from CLI argument
 const arg = process.argv[2] ?? "morning";
 const digestType = arg === "evening" ? "evening" : "morning";
+const forceAll = process.argv.includes("--force-all");
 
 logger.info(`Generating ${digestType} digest...`);
-const digestPayload = formatDigest(digestType);
+if (forceAll) {
+  logger.warn(
+    "⚠️ Force-all mode enabled: this will include jobs already sent in prior digests.",
+  );
+}
+const digestPayload = formatDigest(digestType, { forceAll });
 
 logger.info(`Digest preview: ${digestPayload.jobs.length} jobs found`);
 logger.info(`  🔴 Top Priority: ${digestPayload.bands.topPriority.length}`);

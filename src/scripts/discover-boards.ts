@@ -1,5 +1,5 @@
 /**
- * Manually trigger board name discovery via Google CSE.
+ * Manually trigger board name discovery via SerpApi (Google Search).
  * Usage: bun run discover-boards
  */
 
@@ -7,122 +7,127 @@ import { logger } from "../logger";
 import { loadConfig } from "../config";
 import { initializeDatabase } from "../db";
 import { upsertDiscoveredBoard } from "../db/operations";
-
-interface CseItem {
-  link?: string;
-  title?: string;
-  snippet?: string;
-}
-
-interface CseResponse {
-  items?: CseItem[];
-}
+import { serpApiSearch, type SerpApiResult } from "../connectors/serpapi";
 
 const ATS_PATTERNS = {
   greenhouse: /https?:\/\/boards\.greenhouse\.io\/([a-zA-Z0-9-]+)/i,
   lever: /https?:\/\/jobs\.lever\.co\/([a-zA-Z0-9-]+)/i,
   ashby: /https?:\/\/jobs\.ashbyhq\.com\/([a-zA-Z0-9-]+)/i,
+  workable: /https?:\/\/(?:careers|apply)\.workable\.com\/([a-zA-Z0-9-]+)/i,
+  smartrecruiters: /https?:\/\/jobs\.smartrecruiters\.com\/([a-zA-Z0-9-]+)/i,
+  bamboohr: /https?:\/\/jobs\.bamboohr\.com\/([a-zA-Z0-9-]+)/i,
+  workday: /https?:\/\/([a-zA-Z0-9.-]+\.myworkdayjobs\.com\/[^\s"'<>]+)/i,
+  icims: /https?:\/\/(careers\.icims\.com\/[^\s"'<>]+)/i,
 } as const;
 
 const DISCOVERY_QUERIES = [
   "site:boards.greenhouse.io software engineer canada",
   "site:jobs.lever.co software engineer canada",
   "site:jobs.ashbyhq.com software engineer canada",
+  "site:careers.workable.com software engineer canada",
+  "site:apply.workable.com software engineer canada",
+  "site:jobs.smartrecruiters.com software engineer canada",
+  "site:jobs.bamboohr.com software engineer canada",
+  "site:myworkdayjobs.com software engineer canada",
+  "site:careers.icims.com software engineer canada",
   "site:boards.greenhouse.io backend developer toronto",
   "site:jobs.lever.co frontend developer toronto",
   "site:jobs.ashbyhq.com full stack developer canada",
+  "site:myworkdayjobs.com frontend developer toronto",
+  "site:careers.icims.com full stack developer canada",
 ];
 
-logger.info("═══════════════════════════════════════════════════");
-logger.info("  Board Discovery (Google CSE)");
-logger.info("═══════════════════════════════════════════════════");
+async function run() {
+  logger.info("═══════════════════════════════════════════════════");
+  logger.info("  Board Discovery (SerpApi / Google)");
+  logger.info("═══════════════════════════════════════════════════");
 
-const config = loadConfig();
-initializeDatabase();
+  const config = loadConfig();
+  initializeDatabase();
 
-const engineId = config.env.googleCseEngines.A;
-if (!engineId) {
-  logger.error("GOOGLE_CSE_ENGINE_A is missing. Discovery cannot run.");
-  process.exit(1);
-}
+  if (config.env.serpApiKeys.length === 0) {
+    logger.error(
+      "❌ No SERPAPI_KEY_* values configured. Discovery cannot run.",
+    );
+    logger.info("👉 Add SERPAPI_KEY_1=... to your .env file.");
+    process.exit(1);
+  }
 
-if (config.env.googleCseApiKeys.length === 0) {
-  logger.error("No GOOGLE_CSE_API_KEY_* values configured.");
-  process.exit(1);
-}
+  let inserted = 0;
+  let scanned = 0;
 
-let keyIndex = 0;
-let inserted = 0;
-let scanned = 0;
-
-for (const query of DISCOVERY_QUERIES) {
-  let response: Response | null = null;
-  let lastStatus = 0;
-
-  for (let attempt = 0; attempt < config.env.googleCseApiKeys.length; attempt++) {
-    const key = config.env.googleCseApiKeys[keyIndex % config.env.googleCseApiKeys.length];
-    const url = new URL("https://www.googleapis.com/customsearch/v1");
-    url.searchParams.set("key", key);
-    url.searchParams.set("cx", engineId);
-    url.searchParams.set("q", query);
-    url.searchParams.set("num", "10");
+  for (const query of DISCOVERY_QUERIES) {
+    logger.info(`🔍 Searching: "${query}"...`);
 
     try {
-      response = await fetch(url.toString(), {
-        headers: { Accept: "application/json" },
+      const result = await serpApiSearch({
+        engine: "google",
+        q: query,
+        num: 10, // Max per page usually
       });
-      lastStatus = response.status;
-      if (response.ok) {
-        break;
+
+      const items = result.organic_results || [];
+      scanned += items.length;
+
+      for (const item of items) {
+        const link = item.link ?? "";
+        const title = item.title ?? "";
+        const snippet = item.snippet ?? "";
+        const combined = `${link} ${title} ${snippet}`;
+
+        for (const [platform, pattern] of Object.entries(ATS_PATTERNS)) {
+          const match = combined.match(pattern);
+          if (!match) continue;
+
+          const boardSlug =
+            platform === "workday" || platform === "icims"
+              ? match[1]
+              : match[1].toLowerCase();
+
+          // Skip common false positives or generic pages if necessary
+          if (boardSlug === "jobs" || boardSlug === "careers") continue;
+
+          const boardUrl = normalizeBoardUrl(platform, boardSlug);
+          // Simple heuristic: slug often is the company name
+          const companyGuess = boardSlug.replace(/-/g, " ");
+
+          upsertDiscoveredBoard({
+            platform: platform as
+              | "greenhouse"
+              | "lever"
+              | "ashby"
+              | "workable"
+              | "smartrecruiters"
+              | "bamboohr"
+              | "workday"
+              | "icims",
+            boardUrl,
+            boardSlug,
+            companyGuess,
+            confidence: 0.75,
+            discoveredVia: "serpapi",
+          });
+          inserted++;
+        }
       }
-      keyIndex++;
-    } catch {
-      keyIndex++;
+    } catch (error) {
+      logger.error(`❌ Query failed for "${query}": ${String(error)}`);
     }
+
+    // Polite delay between queries (though serpapi handles rate limits, we don't want to burn keys too fast)
+    await new Promise((r) => setTimeout(r, 2000));
   }
 
-  try {
-    if (!response || !response.ok) {
-      logger.warn(`CSE query failed (${lastStatus || "network"}) for: ${query}`);
-      continue;
-    }
+  logger.info("═══════════════════════════════════════════════════");
+  logger.info(`✅ Discovery Complete`);
+  logger.info(`   - Results Scanned: ${scanned}`);
+  logger.info(`   - Boards Upserted: ${inserted}`);
+  logger.info("═══════════════════════════════════════════════════");
 
-    const payload = (await response.json()) as CseResponse;
-    const items = payload.items ?? [];
-    scanned += items.length;
-
-    for (const item of items) {
-      const link = item.link ?? "";
-      const title = item.title ?? "";
-      const snippet = item.snippet ?? "";
-      const combined = `${link} ${title} ${snippet}`;
-
-      for (const [platform, pattern] of Object.entries(ATS_PATTERNS)) {
-        const match = combined.match(pattern);
-        if (!match) continue;
-
-        const boardSlug = match[1].toLowerCase();
-        const boardUrl = normalizeBoardUrl(platform, boardSlug);
-        const companyGuess = boardSlug.replace(/-/g, " ");
-        upsertDiscoveredBoard({
-          platform: platform as "greenhouse" | "lever" | "ashby",
-          boardUrl,
-          boardSlug,
-          companyGuess,
-          confidence: 0.75,
-          discoveredVia: "cse",
-        });
-        inserted++;
-      }
-    }
-  } catch (error) {
-    logger.warn(`Discovery query failed for "${query}": ${String(error)}`);
-  }
+  // Auto-export to JSON for persistence
+  const { exportBoards } = await import("./sync-boards");
+  exportBoards();
 }
-
-logger.info(`Scanned ${scanned} CSE results.`);
-logger.info(`Upserted ${inserted} board records.`);
-logger.info("✅ Board discovery complete");
 
 function normalizeBoardUrl(platform: string, slug: string): string {
   if (platform === "greenhouse") {
@@ -131,5 +136,19 @@ function normalizeBoardUrl(platform: string, slug: string): string {
   if (platform === "lever") {
     return `https://jobs.lever.co/${slug}`;
   }
-  return `https://jobs.ashbyhq.com/${slug}`;
+  if (platform === "ashby") {
+    return `https://jobs.ashbyhq.com/${slug}`;
+  }
+  if (platform === "workable") {
+    return `https://apply.workable.com/${slug}`;
+  }
+  if (platform === "smartrecruiters") {
+    return `https://jobs.smartrecruiters.com/${slug}`;
+  }
+  if (platform === "bamboohr") {
+    return `https://jobs.bamboohr.com/${slug}`;
+  }
+  return `https://${slug}`;
 }
+
+run().catch((e) => logger.error(`Fatal error: ${e}`));

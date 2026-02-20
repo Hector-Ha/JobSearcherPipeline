@@ -24,8 +24,6 @@ interface LeverJob {
   workplaceType?: string; // "unspecified" | "on-site" | "remote" | "hybrid"
 }
 
-// Fetch Jobs
-
 export async function fetchLeverJobs(
   company: string,
   sourceConfig: SourceDefinition,
@@ -68,10 +66,7 @@ export async function fetchLeverJobs(
   };
 }
 
-// Parse Single Job
-
 function parseLeverJob(job: LeverJob, company: string): RawJob {
-  // Build location from categories
   const locationParts: string[] = [];
   if (job.categories?.location) {
     locationParts.push(job.categories.location);

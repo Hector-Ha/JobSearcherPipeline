@@ -140,7 +140,13 @@ export function getJobByContentFingerprint(
     .query<
       { id: number; first_seen_at: string; posted_at: string | null },
       [string]
-    >(`SELECT id, first_seen_at, posted_at FROM jobs_canonical WHERE content_fingerprint = ? AND status = 'active' LIMIT 1`)
+    >(
+      `SELECT id, first_seen_at, posted_at
+       FROM jobs_canonical
+       WHERE content_fingerprint = ? AND status = 'active'
+       ORDER BY first_seen_at ASC
+       LIMIT 1`,
+    )
     .get(fingerprint);
 }
 
@@ -279,6 +285,13 @@ export function markJobApplied(jobId: number): void {
       jobId,
     ]);
   }
+
+  db.run(
+    `UPDATE jobs_canonical
+     SET status = 'applied', updated_at = datetime('now')
+     WHERE id = ?`,
+    [jobId],
+  );
 }
 
 export function markJobDismissed(jobId: number): void {
@@ -300,6 +313,13 @@ export function markJobDismissed(jobId: number): void {
       [jobId],
     );
   }
+
+  db.run(
+    `UPDATE jobs_canonical
+     SET status = 'dismissed', updated_at = datetime('now')
+     WHERE id = ?`,
+    [jobId],
+  );
 }
 
 // Duplicates
@@ -505,7 +525,19 @@ export function updateConnectorCheckpoint(
 
 // Unsent Jobs (for digest)
 
-export function getUndigestedJobs(sinceDate: string): CanonicalJobRow[] {
+export function getUndigestedJobs(
+  sinceDate: string,
+  includeAlreadyDigested: boolean = false,
+): CanonicalJobRow[] {
+  const dedupClause = includeAlreadyDigested
+    ? ""
+    : `AND id NOT IN (
+         SELECT DISTINCT n.job_id FROM notifications n
+         WHERE n.message_type IN ('morning_digest', 'evening_digest')
+           AND n.success = 1
+           AND n.job_id IS NOT NULL
+       )`;
+
   return db
     .query<CanonicalJobRow, [string]>(
       `SELECT id, title, company, source, url, city, location_tier,
@@ -515,12 +547,7 @@ export function getUndigestedJobs(sinceDate: string): CanonicalJobRow[] {
        WHERE title_bucket IN ('include', 'maybe')
          AND status = 'active'
          AND first_seen_at >= ?
-         AND id NOT IN (
-           SELECT DISTINCT n.job_id FROM notifications n
-           INNER JOIN applications a ON a.job_id = n.job_id
-           WHERE n.message_type IN ('morning_digest', 'evening_digest')
-             AND n.job_id IS NOT NULL
-         )
+         ${dedupClause}
        ORDER BY score DESC, first_seen_at DESC`,
     )
     .all(sinceDate);
@@ -548,14 +575,30 @@ export function getRecentJobsForFuzzyDedup(
 
 export interface DiscoveredBoard {
   id: number;
-  platform: "greenhouse" | "lever" | "ashby";
+  platform:
+    | "greenhouse"
+    | "lever"
+    | "ashby"
+    | "workable"
+    | "smartrecruiters"
+    | "bamboohr"
+    | "workday"
+    | "icims";
   board_url: string;
   board_slug: string | null;
   company_guess: string | null;
 }
 
 export function upsertDiscoveredBoard(input: {
-  platform: "greenhouse" | "lever" | "ashby";
+  platform:
+    | "greenhouse"
+    | "lever"
+    | "ashby"
+    | "workable"
+    | "smartrecruiters"
+    | "bamboohr"
+    | "workday"
+    | "icims";
   boardUrl: string;
   boardSlug: string | null;
   companyGuess: string | null;
@@ -587,7 +630,15 @@ export function upsertDiscoveredBoard(input: {
 }
 
 export function getActiveDiscoveredBoards(
-  platform: "greenhouse" | "lever" | "ashby",
+  platform:
+    | "greenhouse"
+    | "lever"
+    | "ashby"
+    | "workable"
+    | "smartrecruiters"
+    | "bamboohr"
+    | "workday"
+    | "icims",
 ): DiscoveredBoard[] {
   return db
     .query<DiscoveredBoard, [string]>(
@@ -717,7 +768,7 @@ export function getRawJobsForReplay(
     .all(source, date);
 }
 
-// ─── AI Fit Analysis ───────────────────────────────────────────────────────
+// AI Fit Analysis
 
 import type { FitAnalysis, FitAnalysisRow } from "../ai/types";
 
@@ -797,7 +848,7 @@ export function getAlternateUrls(
     .all(jobId);
 }
 
-// ─── Resume/Recovery ───────────────────────────────────────────────────────
+// Resume/Recovery
 
 export interface JobNeedingAnalysis {
   id: number;
@@ -875,8 +926,160 @@ export function getRawJobContent(canonicalJobId: number): string | null {
       `SELECT jr.raw_payload
        FROM jobs_raw jr
        INNER JOIN jobs_canonical jc ON jc.raw_job_id = jr.id
-       WHERE jc.id = ?`,
+        WHERE jc.id = ?`,
     )
     .get(canonicalJobId);
   return result?.raw_payload ?? null;
+}
+
+// Analytics
+
+export interface SourceAnalytics {
+  source: string;
+  totalJobs: number;
+  totalNew: number;
+  totalDuplicates: number;
+  totalParseFailures: number;
+  totalApplied: number;
+  avgResponseTimeMs: number;
+  successRate: number;
+  duplicateRate: number;
+  parseFailureRate: number;
+  applyConversionRate: number;
+}
+
+export function getSourceAnalytics(days: number = 7): SourceAnalytics[] {
+  return db
+    .query<SourceAnalytics, [number, number, number]>(
+      `SELECT 
+        sm.source as source,
+        SUM(sm.jobs_found) as totalJobs,
+        SUM(sm.jobs_new) as totalNew,
+        SUM(sm.jobs_duplicate) as totalDuplicates,
+        SUM(sm.parse_failures) as totalParseFailures,
+        AVG(sm.response_time_avg_ms) as avgResponseTimeMs,
+        AVG(sm.success_rate) as successRate,
+        COALESCE((
+          SELECT COUNT(*)
+          FROM applications a
+          INNER JOIN jobs_canonical jc ON jc.id = a.job_id
+          WHERE a.status = 'applied'
+            AND jc.source = sm.source
+            AND a.applied_at >= datetime('now', '-' || ? || ' days')
+        ), 0) as totalApplied,
+        CASE
+          WHEN SUM(jobs_found) > 0 
+          THEN CAST(SUM(jobs_duplicate) AS REAL) / SUM(jobs_found)
+          ELSE 0 
+        END as duplicateRate,
+        CASE
+          WHEN SUM(sm.jobs_found) > 0
+          THEN CAST(SUM(sm.parse_failures) AS REAL) / SUM(sm.jobs_found)
+          ELSE 0
+        END as parseFailureRate,
+        CASE
+          WHEN SUM(sm.jobs_found) > 0
+          THEN CAST(COALESCE((
+            SELECT COUNT(*)
+            FROM applications a
+            INNER JOIN jobs_canonical jc ON jc.id = a.job_id
+            WHERE a.status = 'applied'
+              AND jc.source = sm.source
+              AND a.applied_at >= datetime('now', '-' || ? || ' days')
+          ), 0) AS REAL) / SUM(sm.jobs_found)
+          ELSE 0
+        END as applyConversionRate
+       FROM source_metrics sm
+       WHERE sm.date >= date('now', '-' || ? || ' days')
+       GROUP BY sm.source
+       ORDER BY totalNew DESC`,
+    )
+    .all(days, days, days);
+}
+
+export interface WeeklySummary {
+  totalJobs: number;
+  totalNew: number;
+  totalApplied: number;
+  totalDismissed: number;
+  bySource: Array<{ source: string; count: number }>;
+  byScoreBand: Array<{ band: string; count: number }>;
+  topLocations: Array<{ city: string; count: number }>;
+}
+
+export function getWeeklySummary(): WeeklySummary {
+  const totalJobs =
+    db
+      .query<{ count: number }, [number]>(
+        `SELECT COUNT(*) as count FROM jobs_canonical 
+       WHERE first_seen_at >= datetime('now', '-' || ? || ' days')`,
+      )
+      .get(7)?.count ?? 0;
+
+  const totalNew =
+    db
+      .query<{ count: number }, [number]>(
+        `SELECT COUNT(*) as count FROM jobs_canonical 
+       WHERE first_seen_at >= datetime('now', '-' || ? || ' days') AND is_backfill = 0`,
+      )
+      .get(7)?.count ?? 0;
+
+  const appliedResult = db
+    .query<{ count: number }, []>(
+      `SELECT COUNT(*) as count FROM applications 
+       WHERE applied_at >= datetime('now', '-7 days') AND status = 'applied'`,
+    )
+    .get();
+  const totalApplied = appliedResult?.count ?? 0;
+
+  const dismissedResult = db
+    .query<{ count: number }, []>(
+      `SELECT COUNT(*) as count FROM applications 
+       WHERE applied_at >= datetime('now', '-7 days') AND status = 'dismissed'`,
+    )
+    .get();
+  const totalDismissed = dismissedResult?.count ?? 0;
+
+  const bySource = db
+    .query<{ source: string; count: number }, []>(
+      `SELECT source, COUNT(*) as count 
+       FROM jobs_canonical 
+       WHERE first_seen_at >= datetime('now', '-7 days')
+       GROUP BY source 
+       ORDER BY count DESC 
+       LIMIT 10`,
+    )
+    .all();
+
+  const byScoreBand = db
+    .query<{ band: string; count: number }, []>(
+      `SELECT score_band as band, COUNT(*) as count 
+       FROM jobs_canonical 
+       WHERE first_seen_at >= datetime('now', '-7 days')
+       GROUP BY score_band 
+       ORDER BY count DESC`,
+    )
+    .all();
+
+  const topLocations = db
+    .query<{ city: string; count: number }, []>(
+      `SELECT city, COUNT(*) as count 
+       FROM jobs_canonical 
+       WHERE first_seen_at >= datetime('now', '-7 days')
+         AND city IS NOT NULL AND city != ''
+       GROUP BY city 
+       ORDER BY count DESC 
+       LIMIT 10`,
+    )
+    .all();
+
+  return {
+    totalJobs,
+    totalNew,
+    totalApplied,
+    totalDismissed,
+    bySource,
+    byScoreBand,
+    topLocations,
+  };
 }

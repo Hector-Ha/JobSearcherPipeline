@@ -3,6 +3,8 @@ node_modules/
 
 # Environment secrets
 .env
+.env.*
+!.env.example
 
 # Database
 data/
@@ -10,6 +12,7 @@ data/
 
 # Logs
 logs/
+*.log
 
 # Build output
 dist/
@@ -27,8 +30,8 @@ bun.lockb
 
 plans
 Strategy
-AGENTS.md
 
 # Personal data
 config/resume.md
 Hector_Ha_Resume.pdf
+setup.sh

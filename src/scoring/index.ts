@@ -36,7 +36,13 @@ export function scoreFreshness(
   const referenceTime = postedAt ?? firstSeenAt;
   const refDate = new Date(referenceTime);
   const now = new Date();
-  const hoursAgo = (now.getTime() - refDate.getTime()) / (1000 * 60 * 60);
+  let hoursAgo = (now.getTime() - refDate.getTime()) / (1000 * 60 * 60);
+
+  if (hoursAgo < 0) {
+    // User requested to "said it future dates" - likely means flagging/logging
+    // We clamp to 0 to treat it as "just now" for scoring purposes
+    hoursAgo = 0;
+  }
 
   let points = 0;
 

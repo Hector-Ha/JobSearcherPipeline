@@ -6,7 +6,11 @@
  */
 
 import { logger } from "../logger";
-import { logNotification, queueAlertRetry, getAlternateUrls } from "../db/operations";
+import {
+  logNotification,
+  queueAlertRetry,
+  getAlternateUrls,
+} from "../db/operations";
 import type { BotType, MessageType } from "../types";
 
 interface TelegramInlineButton {
@@ -25,6 +29,18 @@ interface TelegramSendResult {
 let _botTokens: Record<BotType, string> = { job: "", log: "" };
 let _chatIds: Record<BotType, string> = { job: "", log: "" };
 let _dryRun = false;
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function safeHref(url: string): string {
+  return escapeHtml(url.trim());
+}
 
 export function initAlerts(config: {
   telegramBotToken: string;
@@ -123,22 +139,33 @@ export async function sendJobAlert(
   fitAnalysis?: FitAnalysis | null,
 ): Promise<void> {
   const timeAgo = formatTimeAgo(job.postedAt ?? job.firstSeenAt);
-  const locationStr = job.city ?? "Unknown";
-  const modeStr = job.workMode !== "unknown" ? ` (${job.workMode})` : "";
+  const locationStr = escapeHtml(job.city ?? "Unknown");
+  const modeStr =
+    job.workMode !== "unknown" ? ` (${escapeHtml(job.workMode)})` : "";
+  const title = escapeHtml(job.title);
+  const company = escapeHtml(job.company);
+  const sourceLabel = escapeHtml(job.source);
+  const primaryUrl = safeHref(job.url);
 
   // Get alternate URLs from other sources
   const alternates = getAlternateUrls(job.id);
-  const altLinks = alternates.length >= 2
-    ? ` | 🔗 Also on: ${alternates.map(a => `<a href="${a.url}">${capitalize(a.source)}</a>`).join(" | ")}`
-    : alternates.length === 1
-      ? ` | 🔗 Also on: <a href="${alternates[0].url}">${capitalize(alternates[0].source)}</a>`
-      : "";
+  const altLinks =
+    alternates.length >= 2
+      ? ` | 🔗 Also on: ${alternates
+          .map(
+            (a) =>
+              `<a href="${safeHref(a.url)}">${escapeHtml(capitalize(a.source))}</a>`,
+          )
+          .join(" | ")}`
+      : alternates.length === 1
+        ? ` | 🔗 Also on: <a href="${safeHref(alternates[0].url)}">${escapeHtml(capitalize(alternates[0].source))}</a>`
+        : "";
 
   const lines = [
     `🔴 <b>TOP PRIORITY — Score: ${job.score}</b>`,
-    `${job.title} @ ${job.company}`,
+    `${title} @ ${company}`,
     `📍 ${locationStr}${modeStr} | 🕐 ${timeAgo}`,
-    `🔗 Apply: <a href="${job.url}">${job.source}</a>${altLinks}`,
+    `🔗 Apply: <a href="${primaryUrl}">${sourceLabel}</a>${altLinks}`,
   ];
 
   // Add AI fit analysis if available
@@ -153,27 +180,27 @@ export async function sendJobAlert(
 
     lines.push("");
     lines.push(
-      `🧠 <b>AI Fit: ${fitAnalysis.fitScore}/100 — ${verdictEmoji} ${capitalize(fitAnalysis.verdict)}</b>`,
+      `🧠 <b>AI Fit: ${fitAnalysis.fitScore}/100 — ${verdictEmoji} ${escapeHtml(capitalize(fitAnalysis.verdict))}</b>`,
     );
-    lines.push(`📊 ${fitAnalysis.summary}`);
+    lines.push(`📊 ${escapeHtml(fitAnalysis.summary)}`);
 
     if (fitAnalysis.keySkillsMatched.length > 0) {
       lines.push(
-        `✅ Match: ${fitAnalysis.keySkillsMatched.slice(0, 6).join(", ")}`,
+        `✅ Match: ${escapeHtml(fitAnalysis.keySkillsMatched.slice(0, 6).join(", "))}`,
       );
     }
     if (fitAnalysis.keySkillsMissing.length > 0) {
       lines.push(
-        `❌ Gaps: ${fitAnalysis.keySkillsMissing.slice(0, 5).join(", ")}`,
+        `❌ Gaps: ${escapeHtml(fitAnalysis.keySkillsMissing.slice(0, 5).join(", "))}`,
       );
     }
-    lines.push(`💡 ${fitAnalysis.recommendation}`);
+    lines.push(`💡 ${escapeHtml(fitAnalysis.recommendation)}`);
 
     if (fitAnalysis.resumeTailoringTips.length > 0) {
       lines.push("");
       lines.push("📝 <b>Resume Tips:</b>");
       for (const tip of fitAnalysis.resumeTailoringTips.slice(0, 3)) {
-        lines.push(`• ${tip}`);
+        lines.push(`• ${escapeHtml(tip)}`);
       }
     }
   }
@@ -246,7 +273,7 @@ export async function sendDigest(
     maybeReview: DigestJob[];
   },
 ): Promise<void> {
-  // 1. Send the header summary
+  // Send the header summary
   const headerResult = await sendMessage("job", header);
   logNotification(
     "job",
@@ -283,8 +310,26 @@ export async function sendDigest(
       const result = await sendMessage("job", cardText, keyboard);
       if (result.success) {
         sent++;
+        logNotification(
+          "job",
+          messageType,
+          job.id,
+          cardText,
+          result.messageId?.toString() ?? null,
+          true,
+          null,
+        );
       } else {
         failed++;
+        logNotification(
+          "job",
+          messageType,
+          job.id,
+          cardText,
+          result.messageId?.toString() ?? null,
+          false,
+          result.error ?? null,
+        );
         queueAlertRetry("job", messageType, job.id, cardText, result.error!);
       }
 
@@ -293,12 +338,12 @@ export async function sendDigest(
     }
   }
 
-  // 2. Send each band with its jobs (cards with buttons)
+  // Send each band with its jobs (cards with buttons)
   await sendBand("🔴 <b>TOP PRIORITY (80+)</b>", bands.topPriority);
   await sendBand("🟡 <b>GOOD MATCH (50-79)</b>", bands.goodMatch);
   await sendBand("🟢 <b>ALSO FOUND (&lt;50)</b>", bands.worthALook);
 
-  // 3. NEEDS REVIEW — compact text list, no buttons
+  // Compact text list, no buttons
   if (bands.maybeReview.length > 0) {
     const reviewLines = [
       "❓ <b>NEEDS REVIEW (ambiguous titles)</b>",

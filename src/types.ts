@@ -6,7 +6,12 @@ export type ScoreBandKey = "topPriority" | "goodMatch" | "worthALook";
 
 export type TimestampConfidence = "high" | "medium" | "low";
 
-export type JobStatus = "active" | "expired" | "archived";
+export type JobStatus =
+  | "active"
+  | "applied"
+  | "dismissed"
+  | "expired"
+  | "archived";
 
 export interface RawJob {
   source: string;

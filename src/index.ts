@@ -8,12 +8,16 @@ import {
 } from "./db";
 import { loadConfig, type AppConfig } from "./config";
 import { startScheduler } from "./scheduler";
-import { handleCallbackQuery } from "./alerts/callback";
+import { handleCallbackQuery, startCallbackPolling } from "./alerts/callback";
 import {
   getJobsByScore,
   getJobById,
   markJobApplied,
   markJobDismissed,
+  getSourceAnalytics,
+  getWeeklySummary,
+  getFitAnalysis,
+  getAlternateUrls,
 } from "./db/operations";
 import type { TitleBucket, JobStatus } from "./types";
 
@@ -31,6 +35,8 @@ try {
 
 try {
   initializeDatabase();
+  const { importBoards } = await import("./scripts/sync-boards");
+  importBoards();
 } catch (error) {
   logger.error("Failed to initialize database:", error);
   process.exit(1);
@@ -63,7 +69,6 @@ app.get("/health", (c) => {
   });
 });
 
-// Status endpoint
 app.get("/status", (c) => {
   const stats = getDatabaseStats();
 
@@ -78,13 +83,15 @@ app.get("/status", (c) => {
       greenhouse: config.companies.greenhouse.length,
       lever: config.companies.lever.length,
       ashby: config.companies.ashby.length,
+      workable: config.companies.workable?.length ?? 0,
+      smartrecruiters: config.companies.smartrecruiters?.length ?? 0,
+      bamboohr: config.companies.bamboohr?.length ?? 0,
     },
-    cseApiKeys: config.env.googleCseApiKeys.length,
+    serpApiKeys: config.env.serpApiKeys.length,
     database: stats,
   });
 });
 
-// REST API endpoints
 app.get("/api/jobs", (c) => {
   const limit = parseInt(c.req.query("limit") ?? "50", 10);
   const offset = parseInt(c.req.query("offset") ?? "0", 10);
@@ -92,6 +99,20 @@ app.get("/api/jobs", (c) => {
   const bucket = c.req.query("bucket") as TitleBucket | undefined;
   const status = (c.req.query("status") as JobStatus) ?? "active";
   const since = c.req.query("since") as string | undefined;
+  const minScore = Number.parseInt(c.req.query("minScore") ?? "", 10);
+  const tiersRaw = c.req.query("tiers") ?? c.req.query("tier") ?? "";
+
+  const tiers = tiersRaw
+    .split(",")
+    .map((tier) => tier.trim())
+    .filter((tier) => tier.length > 0);
+
+  const bandRanges: Record<string, { min: number; max: number }> = {
+    topPriority: { min: 80, max: 100 },
+    goodMatch: { min: 65, max: 79 },
+    worthALook: { min: 50, max: 64 },
+  };
+  const selectedBand = band ? bandRanges[band] : undefined;
 
   const jobs = getJobsByScore({
     titleBucket: bucket,
@@ -99,6 +120,9 @@ app.get("/api/jobs", (c) => {
     limit: Math.min(limit, 200),
     offset,
     sinceDate: since,
+    minScore: Number.isFinite(minScore) ? minScore : selectedBand?.min,
+    maxScore: selectedBand?.max,
+    tiers: tiers.length > 0 ? tiers : undefined,
   });
 
   return c.json({
@@ -117,7 +141,11 @@ app.get("/api/jobs/:id", (c) => {
     return c.json({ error: "Job not found" }, 404);
   }
 
-  return c.json(job);
+  return c.json({
+    ...job,
+    fitAnalysis: getFitAnalysis(id),
+    alternateUrls: getAlternateUrls(id),
+  });
 });
 
 app.post("/api/jobs/:id/applied", (c) => {
@@ -158,18 +186,20 @@ app.post("/api/telegram/callback", async (c) => {
   }
 });
 
-// Analytics endpoints (placeholders for Phase 3)
 app.get("/api/analytics/sources", (c) => {
-  // TODO: Source analytics
-  return c.json({ message: "Not implemented yet" });
+  const days = parseInt(c.req.query("days") ?? "7", 10);
+  const analytics = getSourceAnalytics(days);
+  return c.json({
+    period: `${days} days`,
+    sources: analytics,
+  });
 });
 
 app.get("/api/analytics/weekly", (c) => {
-  // TODO: Weekly summary
-  return c.json({ message: "Not implemented yet" });
+  const summary = getWeeklySummary();
+  return c.json(summary);
 });
 
-// Start server
 const port = config.env.port;
 
 logger.info(`Starting server on port ${port}...`);
@@ -178,8 +208,12 @@ if (config.env.dryRun) {
   logger.info("🧪 DRY RUN MODE — no Telegram alerts will be sent");
 }
 
-// Start the cron scheduler
 startScheduler(config);
+
+// Fallback path for local/dev deployments where no public webhook is configured.
+startCallbackPolling(config.env.telegramBotToken, {
+  force: process.env.TELEGRAM_FORCE_POLLING === "true",
+});
 
 export default {
   port,

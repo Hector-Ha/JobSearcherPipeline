@@ -67,6 +67,41 @@ if (config.sources.sources.ashby?.enabled) {
   });
 }
 
+if (config.sources.sources.workable?.enabled) {
+  testEndpoints.push({
+    name: "Workable Careers",
+    urls: ["https://careers.workable.com"],
+  });
+}
+
+if (config.sources.sources.smartrecruiters?.enabled) {
+  testEndpoints.push({
+    name: "SmartRecruiters Careers",
+    urls: ["https://jobs.smartrecruiters.com"],
+  });
+}
+
+if (config.sources.sources.bamboohr?.enabled) {
+  testEndpoints.push({
+    name: "BambooHR Careers",
+    urls: ["https://jobs.bamboohr.com"],
+  });
+}
+
+if (config.sources.sources.workday?.enabled) {
+  testEndpoints.push({
+    name: "Workday Careers",
+    urls: ["https://myworkdayjobs.com"],
+  });
+}
+
+if (config.sources.sources.icims?.enabled) {
+  testEndpoints.push({
+    name: "iCIMS Careers",
+    urls: ["https://careers.icims.com/jobs/search?ss=1"],
+  });
+}
+
 for (const endpoint of testEndpoints) {
   let reachable = false;
   let lastStatus = 0;
@@ -108,7 +143,16 @@ for (const endpoint of testEndpoints) {
 
 // Connector checkpoint summary
 logger.info("\nConnector checkpoints:");
-const sources = ["greenhouse", "lever", "ashby"];
+const sources = [
+  "greenhouse",
+  "lever",
+  "ashby",
+  "workable",
+  "smartrecruiters",
+  "bamboohr",
+  "workday",
+  "icims",
+];
 for (const source of sources) {
   const companies = config.companies[source as keyof typeof config.companies];
   if (Array.isArray(companies)) {
