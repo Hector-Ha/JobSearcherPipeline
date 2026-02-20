@@ -9,7 +9,7 @@
 
 > _Disclaimer: I built this project to automate the tedious aspects of my job search and to solve a real technical problem I was facing. While this tool can handle high-volume applications, my goal was to engineer a solution that showcases my skills in problem-solving, API integration, and OSINT. If you are a recruiter or hiring manager reading this, please view it as a technical portfolio piece, a demonstration of how I approach automation and efficiency rather than a "spray and pray" application strategy. I prioritize genuine interest and targeted applications over sheer volume._
 
-  <img src="./assets/Project_Image.png" alt="Project Image" />
+  <img src="./assets/Project_Image.png" alt="Project Image" width="60%" />
   
   <p>
     <a href="#overview--methodology">Overview</a> •
