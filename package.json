@@ -1,6 +1,6 @@
 {
   "name": "job-search-engine",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Job Search Automation Engine — aggregates job listings from ATS platforms, scores them, and sends Telegram alerts",
   "type": "module",
   "scripts": {
