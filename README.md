@@ -49,7 +49,7 @@ curl -fsSL https://bun.sh/install | bash
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/jobsearch.git
+git clone https://github.com/Hector-Ha/JobSearcherPipeline
 
 # Navigate to the project directory
 cd jobsearch
@@ -102,7 +102,7 @@ For deeper dives into individual components, workflows, and configurations:
 
 ## Contributing
 
-Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**. Please read our `CONTRIBUTING.md` for more details.
+Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
 ## License
 
