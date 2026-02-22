@@ -132,12 +132,14 @@
       "scheduleDescription": "Twice daily at 8:00 AM and 8:00 PM",
       "purpose": "Discover job postings through major job aggregators",
       "queries": [
-        "site:ca.linkedin.com/jobs/view (\"software engineer\" OR \"software developer\" OR \"web developer\" OR \"frontend developer\" OR \"backend developer\" OR \"full stack developer\") (\"Toronto\" OR \"Mississauga\" OR \"Vancouver\") (\"entry level\" OR \"new grad\" OR \"junior\" OR \"intermediate\")",
-        "site:ca.indeed.com/viewjob (\"software engineer\" OR \"software developer\" OR \"web developer\" OR \"full stack developer\") (\"Toronto\" OR \"Mississauga\" OR \"Vancouver\") (\"entry level\" OR \"new grad\" OR \"junior\" OR \"intermediate\")",
-        "site:wellfound.com/jobs (\"full stack engineer\" OR \"software engineer\" OR \"frontend\" OR \"backend\") (\"Canada\" OR \"Toronto\" OR \"Vancouver\" OR \"Remote\") (\"entry level\" OR \"junior\" OR \"intermediate\")",
-        "site:glassdoor.ca/job-listing (\"software engineer\" OR \"software developer\" OR \"backend developer\" OR \"frontend developer\") (\"Toronto\" OR \"Mississauga\" OR \"Vancouver\") (\"entry level\" OR \"new grad\" OR \"junior\" OR \"intermediate\")",
-        "site:eluta.ca (\"software engineer\" OR \"software developer\" OR \"web developer\") (\"Toronto\" OR \"Mississauga\" OR \"Ontario\" OR \"Vancouver\" OR \"BC\") (\"entry level\" OR \"junior\" OR \"intermediate\")",
-        "site:simplify.jobs/p (\"software engineer\" OR \"software developer\" OR \"web developer\" OR \"frontend developer\" OR \"backend developer\" OR \"full stack developer\") (\"Toronto\" OR \"Mississauga\" OR \"Vancouver\" OR \"Canada\") (\"entry level\" OR \"new grad\" OR \"junior\" OR \"intermediate\")"
+        "site:ca.linkedin.com/jobs/view (\"software engineer\" OR \"software developer\" OR \"web developer\" OR \"frontend developer\" OR \"backend developer\" OR \"full stack developer\") (\"Toronto\" OR \"Mississauga\" OR \"Vancouver\")",
+        "site:ca.indeed.com/viewjob (\"software engineer\" OR \"software developer\" OR \"web developer\" OR \"full stack developer\") (\"Toronto\" OR \"Mississauga\" OR \"Vancouver\")",
+        "site:wellfound.com/jobs (\"full stack engineer\" OR \"software engineer\" OR \"frontend\" OR \"backend\") (\"Canada\" OR \"Toronto\" OR \"Vancouver\" OR \"Remote\")",
+        "site:glassdoor.ca/job-listing (\"software engineer\" OR \"software developer\" OR \"backend developer\" OR \"frontend developer\") (\"Toronto\" OR \"Mississauga\" OR \"Vancouver\")",
+        "site:eluta.ca (\"software engineer\" OR \"software developer\" OR \"web developer\") (\"Toronto\" OR \"Mississauga\" OR \"Ontario\" OR \"Vancouver\" OR \"BC\")",
+        "site:simplify.jobs/p (\"software engineer\" OR \"software developer\" OR \"web developer\" OR \"frontend developer\" OR \"backend developer\" OR \"full stack developer\") (\"Toronto\" OR \"Mississauga\" OR \"Vancouver\" OR \"Canada\")",
+        "site:jobbank.gc.ca (\"software engineer\" OR \"software developer\" OR \"web developer\" OR \"frontend developer\" OR \"backend developer\" OR \"full stack developer\") (\"Toronto\" OR \"Mississauga\" OR \"Vancouver\" OR \"Canada\" OR \"Remote\")",
+        "site:careerbeacon.com/en/job (\"software engineer\" OR \"software developer\" OR \"web developer\" OR \"frontend developer\" OR \"backend developer\" OR \"full stack developer\") (\"Toronto\" OR \"Mississauga\" OR \"Vancouver\" OR \"Canada\" OR \"Remote\")"
       ],
       "rateLimiting": {
         "delayBetweenRequestsMs": 1200,
