@@ -740,6 +740,10 @@ export function archiveOldJobs(): { archived: number; purged: number } {
     `Purged ${purgeResult.changes} raw data entries older than 90 days`,
   );
 
+  logger.info("Running VACUUM to reclaim disk space...");
+  db.run("VACUUM");
+  logger.info("VACUUM complete.");
+
   return { archived: archiveResult.changes, purged: purgeResult.changes };
 }
 

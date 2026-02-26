@@ -22,6 +22,12 @@ db.run("PRAGMA journal_mode = WAL");
 db.run("PRAGMA foreign_keys = ON");
 db.run("PRAGMA busy_timeout = 5000");
 
+// Prevent the WAL file from growing indefinitely (64MB)
+db.run("PRAGMA journal_size_limit = 67108864");
+
+// Force temporary tables and indices to use TMPDIR rather than memory/default
+db.run("PRAGMA temp_store = FILE");
+
 export function initializeDatabase(): void {
   logger.info("Initializing database...");
 

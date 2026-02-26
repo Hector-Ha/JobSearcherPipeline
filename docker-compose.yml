@@ -18,6 +18,7 @@ services:
       - DRY_RUN=false
       - TZ=${TZ:-America/Toronto}
       - PORT=${PORT:-3000}
+      - TMPDIR=/app/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:${PORT:-3000}/health"]
       interval: 30s
