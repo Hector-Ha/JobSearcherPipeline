@@ -734,10 +734,10 @@ export function archiveOldJobs(): { archived: number; purged: number } {
 
   const purgeResult = db.run(`
     DELETE FROM jobs_raw
-    WHERE fetched_at < datetime('now', '-90 days')
+    WHERE fetched_at < datetime('now', '-14 days')
   `);
   logger.info(
-    `Purged ${purgeResult.changes} raw data entries older than 90 days`,
+    `Purged ${purgeResult.changes} raw data entries older than 14 days`,
   );
 
   logger.info("Running VACUUM to reclaim disk space...");
